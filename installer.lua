@@ -222,6 +222,118 @@ local function waitAnyKey()
     end
 end
 
+local function waitBackOnly()
+    drawHint("Backspace/left: back   Q: exit")
+    local left = drawButton(2, select(2, ROOT.getSize()), string.char(27) .. " Back", STYLE.back_bg)
+
+    local function inRegion(region, x, y)
+        return region and y == region.y and x >= region.x and x < (region.x + region.w)
+    end
+
+    while true do
+        local event, a, b, c = os.pullEvent()
+        if event == "key" then
+            if a == keys.q then
+                return "cancel"
+            elseif a == keys.backspace or a == keys.left then
+                return "back"
+            end
+        elseif event == "char" then
+            local ch = string.lower(a)
+            if ch == "q" then
+                return "cancel"
+            elseif ch == "b" then
+                return "back"
+            end
+        elseif event == "mouse_click" then
+            if inRegion(left, b, c) then
+                return "back"
+            end
+        end
+    end
+end
+
+local function chooseFromList(section, intro, items, selected, canBack)
+    selected = selected or 1
+    while true do
+        local win = drawChrome(section)
+        local row = 1
+        row = writeParagraph(win, row, intro, STYLE.root_fg)
+        row = row + 1
+
+        for i, item in ipairs(items) do
+            local isSelected = i == selected
+            local prefix = isSelected and "> " or "  "
+            local fg = isSelected and STYLE.highlight_fg or STYLE.root_fg
+            local bg = isSelected and STYLE.highlight_bg or STYLE.root_bg
+            writeAt(win, 1, row, truncate(prefix .. item, select(1, win.getSize())), fg, bg)
+            row = row + 1
+        end
+
+        local hint = canBack
+            and "Up/down: select   Enter/right: confirm   Backspace/left: back   Q: exit"
+            or "Up/down: select   Enter/right: confirm   Q: exit"
+        drawHint(hint)
+        drawNav(canBack, "Select", STYLE.next_bg)
+
+        local event, a, b, c = os.pullEvent()
+        if event == "key" then
+            if a == keys.up then
+                selected = math.max(1, selected - 1)
+            elseif a == keys.down then
+                selected = math.min(#items, selected + 1)
+            elseif canBack and (a == keys.backspace or a == keys.left) then
+                return nil, "back"
+            elseif a == keys.enter or a == keys.right then
+                return selected, "forward"
+            elseif a == keys.q then
+                return nil, "cancel"
+            end
+        elseif event == "char" then
+            local ch = string.lower(a)
+            if ch == "q" then
+                return nil, "cancel"
+            elseif canBack and ch == "b" then
+                return nil, "back"
+            end
+            local idx = tonumber(ch)
+            if idx and items[idx] then
+                selected = idx
+            end
+        elseif event == "mouse_click" then
+            local w, h = ROOT.getSize()
+            if c == h then
+                local leftText = canBack and (" " .. string.char(27) .. " Back ") or " Exit "
+                local left = { x = 2, y = h, w = #leftText }
+                local rightText = " Select " .. string.char(26) .. " "
+                local right = { x = math.max(left.x + left.w + 2, w - #rightText + 1), y = h, w = #rightText }
+                if c == left.y and b >= left.x and b < left.x + left.w then
+                    return nil, canBack and "back" or "cancel"
+                elseif c == right.y and b >= right.x and b < right.x + right.w then
+                    return selected, "forward"
+                end
+            else
+                local listRow = c - 4
+                if listRow >= 3 and items[listRow - 2] then
+                    selected = listRow - 2
+                end
+            end
+        end
+    end
+end
+
+local function chooseBoolean(section, intro, current, trueLabel, falseLabel, canBack)
+    local idx = current and 1 or 2
+    local labels = { trueLabel, falseLabel }
+    while true do
+        local selected, action = chooseFromList(section, intro, labels, idx, canBack)
+        if action ~= "forward" then
+            return nil, action
+        end
+        return selected == 1, "forward"
+    end
+end
+
 local function waitNav(canBack, rightLabel, rightBg)
     local hint = canBack
         and "Enter/right: next   Backspace/left: back   Q: exit"
@@ -342,37 +454,21 @@ end
 -- Wizard pages ---------------------------------------------------------------
 
 local function pageRole(cfg)
-    while true do
-        local win = drawChrome("Role Selection")
-        local row = 1
-
-        row = writeParagraph(win, row, "Choose the role for this computer. This decides which node files will be downloaded.", STYLE.root_fg)
-        row = row + 1
-
-        for i, role in ipairs(ROLE_ORDER) do
-            local isSelected = cfg.role == role
-            local fg = isSelected and STYLE.highlight_fg or STYLE.root_fg
-            local bg = isSelected and STYLE.highlight_bg or STYLE.root_bg
-            writeAt(win, 1, row, string.format("%d. %s", i, ROLE_LABELS[role]), fg, bg)
-            row = row + 1
-        end
-
-        row = row + 1
-        drawHint("Type a role number, then use the buttons below.")
-        drawNav(false, "Next", STYLE.next_bg)
-
-        local raw = trim(inputField(win, row, "Role number", roleIndex(cfg.role) or 1, "[1-5]"))
-        if raw:lower() == "q" then return "cancel" end
-
-        local idx = tonumber(raw)
-        if idx and ROLE_ORDER[idx] then
-            cfg.role = ROLE_ORDER[idx]
-            sanitizeRoleConfig(cfg)
-            return waitNav(false, "Next", STYLE.next_bg)
-        end
-
-        alert("Role Selection", "Invalid role number. Enter a number from 1 to 5.")
+    local labels = {}
+    for _, role in ipairs(ROLE_ORDER) do
+        labels[#labels + 1] = ROLE_LABELS[role]
     end
+    local idx, action = chooseFromList(
+        "Role Selection",
+        "Choose the role for this computer. Use up/down arrows to move the selection and press Enter to confirm.",
+        labels,
+        roleIndex(cfg.role) or 1,
+        false
+    )
+    if action ~= "forward" then return action end
+    cfg.role = ROLE_ORDER[idx]
+    sanitizeRoleConfig(cfg)
+    return "forward"
 end
 
 local function pagePeripherals(cfg)
@@ -441,7 +537,7 @@ local function pageIdentity(cfg)
             cfg.node_id = node_id
             cfg.channel = channelNumber
             cfg.shared_secret = secret
-            return waitNav(true, "Next", STYLE.next_bg)
+            return "forward"
         end
     end
 end
@@ -463,7 +559,7 @@ local function pageConnections(cfg)
         if raw:lower() == "q" then return "cancel" end
         if value then
             cfg.controller_id = value
-            return waitNav(true, "Next", STYLE.next_bg)
+            return "forward"
         end
 
         alert("Controller Link", "Controller computer ID must be a number.")
@@ -513,7 +609,7 @@ local function pageHardware(cfg)
             if cfg.role == "controller" then
                 cfg.speaker_side = speaker ~= "" and speaker or nil
             end
-            return waitNav(true, "Next", STYLE.next_bg)
+            return "forward"
         end
     end
 end
@@ -530,24 +626,30 @@ end
 
 local function pageAutoControl(cfg)
     while true do
-        local win = drawChrome("Auto Control")
-        local row = 1
-        local enabledDefault = (cfg.auto_ctrl == nil) and "y" or (cfg.auto_ctrl and "y" or "n")
+        local enabledDefault = (cfg.auto_ctrl == nil) and true or cfg.auto_ctrl
         local lowDefault = math.floor(((cfg.threshold_low or 0.25) * 100) + 0.5)
         local highDefault = math.floor(((cfg.threshold_high or 0.90) * 100) + 0.5)
 
-        row = writeParagraph(win, row, "Controller nodes can automatically start and stop reactors based on the induction matrix fill percentage.", STYLE.root_fg)
-        row = row + 1
+        local enabled, action = chooseBoolean(
+            "Auto Control",
+            "Controller nodes can automatically start and stop reactors based on matrix fill percentage.",
+            enabledDefault,
+            "[x] Enable auto control",
+            "[ ] Disable auto control",
+            true
+        )
 
-        drawHint("Thresholds are percentages. Example: 25 means 25%.")
-        drawNav(true, "Next", STYLE.next_bg)
-
-        local enabled = parseYesNo(inputField(win, row, "Enable auto control? (y/n)", enabledDefault, "[y/n]"))
-        if enabled == nil then
-            alert("Auto Control", "Enter y or n for auto control.")
+        if action == "cancel" or action == "back" then
+            return action
         else
             cfg.auto_ctrl = enabled
             if enabled then
+                local win = drawChrome("Auto Control Thresholds")
+                local row = 1
+                row = writeParagraph(win, row, "Set the controller thresholds. Reactors start below the low threshold and stop above the high threshold.", STYLE.root_fg)
+                row = row + 1
+                drawHint("Thresholds are percentages. Example: 25 means 25%.")
+                drawButton(2, select(2, ROOT.getSize()), string.char(27) .. " Back", STYLE.back_bg)
                 row = row + 3
                 local lowRaw = trim(inputField(win, row, "Start reactors below (%)", lowDefault, "[1-99]"))
                 row = row + 3
@@ -560,12 +662,12 @@ local function pageAutoControl(cfg)
                 else
                     cfg.threshold_low = low / 100
                     cfg.threshold_high = high / 100
-                    return waitNav(true, "Next", STYLE.next_bg)
+                    return "forward"
                 end
             else
                 cfg.threshold_low = 0.25
                 cfg.threshold_high = 0.90
-                return waitNav(true, "Next", STYLE.next_bg)
+                return "forward"
             end
         end
     end

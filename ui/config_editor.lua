@@ -271,7 +271,7 @@ function editor.run(cfg)
         local input = panel:addInput()
             :setPosition(1, row + 1):setSize(panel_w, 1)
             :setBackground(COLORS.input_bg):setForeground(COLORS.input_fg)
-            :setDefaultText(initial == nil and "" or tostring(initial))
+            :setText(initial == nil and "" or tostring(initial))
         input:onChange(function(_, _, raw)
             dirty = true
             local ok, value, err = normalizer(raw)
@@ -368,7 +368,23 @@ function editor.run(cfg)
             local row = 1
             row = addNote(panels.control, row, "Tune automatic reactor control behavior.")
             row = row + 1
-            row = registerInput(panels.control, row, "Auto control (true/false)", "auto_ctrl", edits.auto_ctrl and "true" or "false", normalizeBool)
+            panels.control:addLabel()
+                :setPosition(1, row):setSize(panel_w, 1)
+                :setBackground(COLORS.panel_bg):setForeground(COLORS.label_fg)
+                :setText("Auto control")
+            local checkbox = panels.control:addCheckBox()
+                :setPosition(1, row + 1):setSize(panel_w, 1)
+                :setForeground(COLORS.value_fg):setBackground(COLORS.panel_bg)
+                :setText("[ ] Disabled")
+                :setCheckedText("[x] Enabled")
+                :setChecked(edits.auto_ctrl == true)
+            checkbox:onClick(function(self)
+                dirty = true
+                edits.auto_ctrl = self:getChecked()
+                field_errors.auto_ctrl = nil
+                setStatus("Auto control updated", COLORS.hint_fg)
+            end)
+            row = row + 4
             row = registerInput(panels.control, row, "Start reactors below (% or 0-1)", "threshold_low", math.floor((edits.threshold_low or 0.25) * 100 + 0.5), normalizePercent)
             row = registerInput(panels.control, row, "Stop reactors above (% or 0-1)", "threshold_high", math.floor((edits.threshold_high or 0.90) * 100 + 0.5), normalizePercent)
         end
@@ -457,6 +473,15 @@ function editor.run(cfg)
 
     save_btn:onClick(saveConfig)
     launch_btn:onClick(function()
+        local ok, err = validateEdits()
+        if not ok then
+            setStatus(err, COLORS.err_fg)
+            return
+        end
+        if dirty then
+            saveConfig()
+            if dirty then return end
+        end
         if dirty then
             setStatus("Unsaved changes. Save before launching.", COLORS.warn_fg)
             return
