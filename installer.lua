@@ -8,7 +8,7 @@
 --   installer
 
 local VERSION    = "0.1.0"
-local BASE_URL   = "https://raw.githubusercontent.com/Variiuz/cc-enmon/main/"
+local BASE_URL   = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/"
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/Basalt/basalt.lua"
 

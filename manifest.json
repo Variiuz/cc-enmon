@@ -1,6 +1,6 @@
 {
   "version": "0.1.0",
-  "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/main/",
+  "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
   "files": {
     "common": [
       "enmon.lua",
