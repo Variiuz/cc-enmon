@@ -1,27 +1,27 @@
 -- installer.lua
--- ENMON installer — run this first on any new computer.
+-- ENMON installer - run this first on any new computer.
 --
 -- Flow:
 --   1. Select role
---   2. Peripheral check (non-blocking warnings)
---   3. Full config wizard (all questions for this role)
---   4. Download common + role-specific files
---   5. Download Basalt 2
+--   2. Check peripherals
+--   3. Configure node settings
+--   4. Review config
+--   5. Download files
 --   6. Write enmon.cfg + startup.lua
---   7. Optionally launch ENMON
+--   7. Open config review UI
 --
 -- In-game install command:
 --   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/installer.lua installer.lua
 --   installer
 
-local VERSION    = "0.1.0"
+local VERSION    = "0.2.0"
 local BASE_URL   = "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/"
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/refs/heads/main/release/basalt-core.lua"
 
 local ROLE_LABELS = {
     controller = "Controller  (monitor + modem + optional speaker)",
-    matrix     = "Matrix Node (induction_port + ender modem)",
+    matrix     = "Matrix Node (induction port + ender modem)",
     reactor    = "Reactor Node (reactor port + ender modem)",
     display    = "Display Node (monitor + ender modem)",
     pocket     = "Pocket Computer (ender modem only)",
@@ -30,238 +30,630 @@ local ROLE_ORDER = {"controller", "matrix", "reactor", "display", "pocket"}
 
 local ROLE_REQUIREMENTS = {
     controller = {
-        { types = {"ender_modem", "modem"},            label = "Ender modem",        required = true  },
-        { types = {"monitor"},                         label = "Monitor",             required = true  },
-        { types = {"speaker"},                         label = "Speaker (optional)",  required = false },
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true  },
+        { types = {"monitor"},                           label = "Monitor",         required = true  },
+        { types = {"speaker"},                           label = "Speaker",         required = false },
     },
     matrix = {
-        { types = {"ender_modem", "modem"},                          label = "Ender modem",     required = true },
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
         { types = {"mekanism:induction_port", "inductionPort",
-                   "mekanism.induction_port"},                       label = "Induction Port",  required = true },
+                   "mekanism.induction_port"},           label = "Induction Port",  required = true },
     },
     reactor = {
-        { types = {"ender_modem", "modem"},            label = "Ender modem",         required = true },
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
         { types = {"BigReactors-Reactor",
                    "bigger_reactors:reactor_access_port",
-                   "bigreactors:reactor_access_port"}, label = "Reactor Port",        required = true },
+                   "bigreactors:reactor_access_port"},   label = "Reactor Port",    required = true },
     },
     display = {
-        { types = {"ender_modem", "modem"},            label = "Ender modem",         required = true },
-        { types = {"monitor"},                         label = "Monitor",             required = true },
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
+        { types = {"monitor"},                           label = "Monitor",         required = true },
     },
     pocket = {
-        { types = {"ender_modem", "modem"},            label = "Ender modem",         required = true },
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
     },
 }
 
--- ── UI helpers ────────────────────────────────────────────────────────────────
+local STYLE = {
+    root_bg      = colors.lightGray,
+    root_fg      = colors.black,
+    title_bg     = colors.gray,
+    title_fg     = colors.white,
+    section_bg   = colors.lime,
+    section_fg   = colors.black,
+    label_fg     = colors.gray,
+    hint_fg      = colors.gray,
+    input_bg     = colors.white,
+    input_fg     = colors.black,
+    value_bg     = colors.white,
+    value_fg     = colors.black,
+    highlight_bg = colors.blue,
+    highlight_fg = colors.white,
+    back_bg      = colors.lightBlue,
+    next_bg      = colors.blue,
+    install_bg   = colors.green,
+    exit_bg      = colors.red,
+    button_fg    = colors.black,
+    ok_fg        = colors.lime,
+    warn_fg      = colors.orange,
+    err_fg       = colors.red,
+}
 
-local function cls() term.clear(); term.setCursorPos(1, 1) end
+local ROOT = term.current()
 
-local function colored(color, fn)
-    term.setTextColor(color)
-    fn()
+-- UI helpers -----------------------------------------------------------------
+
+local function cls()
+    term.setBackgroundColor(colors.black)
     term.setTextColor(colors.white)
+    term.clear()
+    term.setCursorPos(1, 1)
 end
 
-local function header()
-    local w = term.getSize()
-    colored(colors.yellow, function()
-        print(string.rep("=", w))
-        print("  ENMON v" .. VERSION .. "  -  Installer")
-        print(string.rep("=", w))
-    end)
-    print()
+local function trim(value)
+    return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
 
-local function status(ok, msg)
-    if ok then colored(colors.green, function() io.write("  [OK]  ") end)
-    else       colored(colors.red,   function() io.write("  [ERR] ") end) end
-    print(msg)
+local function truncate(text, width)
+    text = tostring(text or "")
+    if width <= 0 then return "" end
+    if #text <= width then return text end
+    if width <= 3 then return text:sub(1, width) end
+    return text:sub(1, width - 3) .. "..."
 end
 
-local function prompt(msg, default)
-    term.setTextColor(colors.cyan)
-    io.write(msg)
-    if default ~= nil then io.write(" [" .. tostring(default) .. "]") end
-    io.write(": ")
-    term.setTextColor(colors.white)
-    local input = io.read()
-    if input == nil or input == "" then return default end
-    return input
+local function wrapText(text, width)
+    local lines = {}
+    for raw in tostring(text or ""):gmatch("[^\n]+") do
+        local line = ""
+        for word in raw:gmatch("%S+") do
+            local part = truncate(word, width)
+            if line == "" then
+                line = part
+            elseif (#line + 1 + #part) <= width then
+                line = line .. " " .. part
+            else
+                lines[#lines + 1] = line
+                line = part
+            end
+        end
+        lines[#lines + 1] = line ~= "" and line or ""
+    end
+    if #lines == 0 then lines[1] = "" end
+    return lines
 end
 
-local function promptNumber(msg, default, min, max)
+local function clearWindow(win, bg, fg)
+    win.setBackgroundColor(bg)
+    win.setTextColor(fg)
+    win.clear()
+    win.setCursorPos(1, 1)
+end
+
+local function fillLine(target, y, bg, fg)
+    local w = select(1, target.getSize())
+    target.setCursorPos(1, y)
+    target.setBackgroundColor(bg)
+    target.setTextColor(fg or STYLE.root_fg)
+    target.write(string.rep(" ", w))
+end
+
+local function writeAt(target, x, y, text, fg, bg)
+    local w = select(1, target.getSize())
+    if y < 1 or x > w then return end
+    text = tostring(text or "")
+    if x < 1 then
+        text = text:sub(2 - x)
+        x = 1
+    end
+    local clipped = truncate(text, w - x + 1)
+    target.setCursorPos(x, y)
+    if bg then target.setBackgroundColor(bg) end
+    if fg then target.setTextColor(fg) end
+    target.write(clipped)
+end
+
+local function centerText(target, y, text, fg, bg)
+    local w = select(1, target.getSize())
+    local x = math.max(1, math.floor((w - #text) / 2) + 1)
+    writeAt(target, x, y, text, fg, bg)
+end
+
+local function writeParagraph(win, row, text, fg)
+    local width = select(1, win.getSize())
+    for _, line in ipairs(wrapText(text, width)) do
+        writeAt(win, 1, row, line, fg or STYLE.root_fg, STYLE.root_bg)
+        row = row + 1
+    end
+    return row
+end
+
+local function drawChrome(section)
+    local w, h = ROOT.getSize()
+    ROOT.setBackgroundColor(STYLE.root_bg)
+    ROOT.setTextColor(STYLE.root_fg)
+    ROOT.clear()
+    fillLine(ROOT, 1, STYLE.title_bg, STYLE.title_fg)
+    centerText(ROOT, 1, "ENMON Installer", STYLE.title_fg, STYLE.title_bg)
+    writeAt(ROOT, math.max(2, w - #("v" .. VERSION)), 1, "v" .. VERSION, STYLE.title_fg, STYLE.title_bg)
+    fillLine(ROOT, 2, STYLE.section_bg, STYLE.section_fg)
+    writeAt(ROOT, 2, 2, section, STYLE.section_fg, STYLE.section_bg)
+    fillLine(ROOT, h - 1, STYLE.root_bg, STYLE.hint_fg)
+    fillLine(ROOT, h, STYLE.root_bg, STYLE.root_fg)
+
+    local content = window.create(ROOT, 2, 4, math.max(1, w - 2), math.max(1, h - 5), true)
+    clearWindow(content, STYLE.root_bg, STYLE.root_fg)
+    return content, w, h
+end
+
+local function drawHint(text)
+    local w, h = ROOT.getSize()
+    fillLine(ROOT, h - 1, STYLE.root_bg, STYLE.hint_fg)
+    writeAt(ROOT, 2, h - 1, truncate(text or "", w - 2), STYLE.hint_fg, STYLE.root_bg)
+end
+
+local function drawButton(x, y, text, bg)
+    local body = " " .. text .. " "
+    writeAt(ROOT, x, y, body, STYLE.button_fg, bg)
+    return { x = x, y = y, w = #body }
+end
+
+local function drawNav(canBack, rightLabel, rightBg)
+    local w, h = ROOT.getSize()
+    local leftText = canBack and (string.char(27) .. " Back") or "Exit"
+    local leftBg = canBack and STYLE.back_bg or STYLE.exit_bg
+    local left = drawButton(2, h, leftText, leftBg)
+
+    local right = nil
+    if rightLabel then
+        local label = rightLabel .. " " .. string.char(26)
+        local rightX = math.max(left.x + left.w + 2, w - (#label + 2))
+        right = drawButton(rightX, h, label, rightBg or STYLE.next_bg)
+    end
+    return left, right
+end
+
+local function waitAnyKey()
     while true do
-        local raw = prompt(msg, default)
-        local n = tonumber(raw)
-        if n and (not min or n >= min) and (not max or n <= max) then return n end
-        colored(colors.red, function() print("  Please enter a valid number.") end)
+        local event = os.pullEvent()
+        if event == "key" or event == "char" or event == "mouse_click" then
+            return
+        end
     end
 end
 
-local function promptYesNo(msg, default)
-    local d = default and "y" or "n"
+local function waitNav(canBack, rightLabel, rightBg)
+    local hint = canBack
+        and "Enter/right: next   Backspace/left: back   Q: exit"
+        or "Enter/right: next   Q: exit"
+    drawHint(hint)
+    local left, right = drawNav(canBack, rightLabel, rightBg)
+
+    local function inRegion(region, x, y)
+        return region and y == region.y and x >= region.x and x < (region.x + region.w)
+    end
+
     while true do
-        local raw = prompt(msg .. " (y/n)", d)
-        if raw == nil then raw = d end
-        raw = raw:lower()
-        if raw == "y" or raw == "yes" then return true  end
-        if raw == "n" or raw == "no"  then return false end
-        colored(colors.red, function() print("  Please enter y or n.") end)
+        local event, a, b, c = os.pullEvent()
+        if event == "key" then
+            if a == keys.q then
+                return "cancel"
+            elseif canBack and (a == keys.backspace or a == keys.left) then
+                return "back"
+            elseif a == keys.enter or a == keys.right then
+                return "forward"
+            end
+        elseif event == "char" then
+            local ch = string.lower(a)
+            if ch == "q" then
+                return "cancel"
+            elseif canBack and ch == "b" then
+                return "back"
+            elseif ch == "n" or ch == "y" then
+                return "forward"
+            end
+        elseif event == "mouse_click" then
+            local x, y = b, c
+            if inRegion(left, x, y) then
+                return canBack and "back" or "cancel"
+            elseif inRegion(right, x, y) then
+                return "forward"
+            end
+        end
     end
 end
 
--- ── Step 1: Role selection ────────────────────────────────────────────────────
-
-local function pickRole()
-    print("Select this computer's role:")
-    print()
-    for i, role in ipairs(ROLE_ORDER) do
-        colored(colors.cyan, function() io.write("  [" .. i .. "] ") end)
-        print(ROLE_LABELS[role])
-    end
-    colored(colors.lightGray, function() print("  [q] Quit") end)
-    print()
-    while true do
-        local input = prompt("Enter number")
-        if input == nil or input:lower() == "q" then
-            print("Cancelled.")
-            error("quit", 0)
-        end
-        local n = tonumber(input)
-        if n and ROLE_ORDER[n] then return ROLE_ORDER[n] end
-        colored(colors.red, function() print("  Invalid choice.") end)
-    end
+local function alert(section, text, fg)
+    local win = drawChrome(section)
+    local row = 1
+    row = writeParagraph(win, row, text, fg or STYLE.err_fg)
+    row = row + 1
+    writeAt(win, 1, row, "Press any key to continue.", STYLE.hint_fg, STYLE.root_bg)
+    drawHint("Press any key to continue")
+    waitAnyKey()
 end
 
--- ── Step 2: Peripheral check ──────────────────────────────────────────────────
-
-local function checkPeripherals(role)
-    local reqs = ROLE_REQUIREMENTS[role]
-    if not reqs then return end
-
-    local connected = {}
-    for _, name in ipairs(peripheral.getNames()) do
-        local t = peripheral.getType(name)
-        if t then connected[t] = true end
+local function inputField(win, row, label, default, hint)
+    local width = select(1, win.getSize())
+    local suffix = hint or ((default ~= nil and tostring(default) ~= "") and ("[" .. tostring(default) .. "]") or nil)
+    writeAt(win, 1, row, label, STYLE.root_fg, STYLE.root_bg)
+    if suffix then
+        writeAt(win, math.max(1, width - #suffix + 1), row, suffix, STYLE.hint_fg, STYLE.root_bg)
     end
 
-    print()
-    colored(colors.yellow, function() print("-- Peripheral check: " .. role .. " --") end)
+    local box = window.create(win, 1, row + 1, width, 1, true)
+    clearWindow(box, STYLE.input_bg, STYLE.input_fg)
+    local previous = term.redirect(box)
+    box.setCursorPos(1, 1)
+    local value = read()
+    term.redirect(previous)
 
-    local any_missing = false
-    for _, req in ipairs(reqs) do
-        local found = false
-        for _, t in ipairs(req.types) do
-            if connected[t] then found = true; break end
-        end
-        if found then
-            colored(colors.green, function() print("  [OK]   " .. req.label) end)
-        elseif req.required then
-            colored(colors.red,   function() print("  [MISS] " .. req.label .. "  <-- REQUIRED") end)
-            any_missing = true
-        else
-            colored(colors.yellow, function() print("  [--]   " .. req.label .. "  (optional)") end)
-        end
+    if value == nil or value == "" then
+        return default
     end
-
-    if any_missing then
-        print()
-        colored(colors.red, function()
-            print("  WARNING: Required peripherals are missing.")
-            print("  Connect them before starting ENMON.")
-        end)
-        print()
-        if not promptYesNo("Continue anyway?", false) then
-            print("Cancelled. Reconnect peripherals and re-run.")
-            error("quit", 0)
-        end
-    end
-    print()
+    return value
 end
 
--- ── Step 3: Config wizard ─────────────────────────────────────────────────────
+local function roleIndex(role)
+    for i, candidate in ipairs(ROLE_ORDER) do
+        if candidate == role then return i end
+    end
+    return nil
+end
 
 local function listPeripheralsOfType(ptype)
     local found = {}
     for _, name in ipairs(peripheral.getNames()) do
-        if peripheral.getType(name) == ptype then found[#found+1] = name end
+        if peripheral.getType(name) == ptype then
+            found[#found + 1] = name
+        end
     end
     return found
 end
 
-local function runWizard(role)
-    local cfg = { role = role }
-
-    colored(colors.yellow, function() print("-- Configuration --") end)
-    print()
-
-    -- Node ID
-    local default_id = role .. "_" .. tostring(os.getComputerID())
-    cfg.node_id = prompt("Node ID (unique name for this node)", default_id)
-
-    -- Channel
-    cfg.channel = promptNumber("Network channel", 42, 1, 65535)
-
-    -- Shared secret
-    print()
-    colored(colors.yellow, function() print("  All nodes must share the same secret.") end)
-    cfg.shared_secret = prompt("Shared secret", "enmon_default")
-
-    -- Controller ID (non-controller roles)
-    if role ~= "controller" then
-        print()
-        colored(colors.yellow, function()
-            print("  This is the NUMERIC computer ID of the controller computer,")
-            print("  NOT its node name. Run `id` on the controller to find it.")
-        end)
-        cfg.controller_id = promptNumber("Controller computer ID", nil, 0)
-    end
-
-    -- Monitor side (controller + display)
-    if role == "controller" or role == "display" then
-        print()
-        local monitors = listPeripheralsOfType("monitor")
-        if #monitors > 0 then
-            colored(colors.green, function() print("  Monitors found: " .. table.concat(monitors, ", ")) end)
-        else
-            colored(colors.red, function() print("  No monitor detected.") end)
-        end
-        cfg.monitor_side = prompt("Monitor peripheral name/side", monitors[1] or "top")
-    end
-
-    -- Speaker (controller only)
-    if role == "controller" then
-        print()
-        local speakers = listPeripheralsOfType("speaker")
-        if #speakers > 0 then
-            colored(colors.green, function() print("  Speakers found: " .. table.concat(speakers, ", ")) end)
-            if promptYesNo("Use speaker for alerts?", true) then
-                cfg.speaker_side = prompt("Speaker peripheral name/side", speakers[1])
+local function findMatchingNames(types)
+    local found = {}
+    for _, name in ipairs(peripheral.getNames()) do
+        local ptype = peripheral.getType(name)
+        for _, wanted in ipairs(types) do
+            if ptype == wanted then
+                found[#found + 1] = name
+                break
             end
         end
     end
-
-    -- Auto-control thresholds (controller only)
-    if role == "controller" then
-        print()
-        colored(colors.yellow, function() print("-- Auto reactor control --") end)
-        cfg.auto_ctrl = promptYesNo("Enable automatic reactor on/off based on matrix fill?", true)
-        if cfg.auto_ctrl then
-            cfg.threshold_low  = promptNumber("Start reactors when matrix below (%)", 25, 1, 99) / 100
-            cfg.threshold_high = promptNumber("Stop reactors when matrix above (%)",  90, 1, 99) / 100
-        else
-            cfg.threshold_low  = 0.25
-            cfg.threshold_high = 0.90
-        end
-
-    end
-
-    return cfg
+    return found
 end
 
--- ── Download helpers ──────────────────────────────────────────────────────────
+local function sanitizeRoleConfig(cfg)
+    if cfg.role ~= "controller" then
+        cfg.speaker_side = nil
+        cfg.auto_ctrl = nil
+        cfg.threshold_low = nil
+        cfg.threshold_high = nil
+    else
+        cfg.controller_id = nil
+    end
+    if cfg.role ~= "controller" and cfg.role ~= "display" then
+        cfg.monitor_side = nil
+    end
+end
+
+-- Wizard pages ---------------------------------------------------------------
+
+local function pageRole(cfg)
+    while true do
+        local win = drawChrome("Role Selection")
+        local row = 1
+
+        row = writeParagraph(win, row, "Choose the role for this computer. This decides which node files will be downloaded.", STYLE.root_fg)
+        row = row + 1
+
+        for i, role in ipairs(ROLE_ORDER) do
+            local isSelected = cfg.role == role
+            local fg = isSelected and STYLE.highlight_fg or STYLE.root_fg
+            local bg = isSelected and STYLE.highlight_bg or STYLE.root_bg
+            writeAt(win, 1, row, string.format("%d. %s", i, ROLE_LABELS[role]), fg, bg)
+            row = row + 1
+        end
+
+        row = row + 1
+        drawHint("Type a role number, then use the buttons below.")
+        drawNav(false, "Next", STYLE.next_bg)
+
+        local raw = trim(inputField(win, row, "Role number", roleIndex(cfg.role) or 1, "[1-5]"))
+        if raw:lower() == "q" then return "cancel" end
+
+        local idx = tonumber(raw)
+        if idx and ROLE_ORDER[idx] then
+            cfg.role = ROLE_ORDER[idx]
+            sanitizeRoleConfig(cfg)
+            return waitNav(false, "Next", STYLE.next_bg)
+        end
+
+        alert("Role Selection", "Invalid role number. Enter a number from 1 to 5.")
+    end
+end
+
+local function pagePeripherals(cfg)
+    local reqs = ROLE_REQUIREMENTS[cfg.role] or {}
+    local win = drawChrome("Peripheral Check")
+    local row = 1
+    local width = select(1, win.getSize())
+    local any_missing = false
+
+    row = writeParagraph(win, row, "Detected peripherals for role: " .. (ROLE_LABELS[cfg.role] or cfg.role), STYLE.root_fg)
+    row = row + 1
+
+    for _, req in ipairs(reqs) do
+        local found = findMatchingNames(req.types)
+        local ok = #found > 0
+        if not ok and req.required then any_missing = true end
+
+        local marker = ok and "[+]" or (req.required and "[!]" or "[-]")
+        local color = ok and STYLE.ok_fg or (req.required and STYLE.err_fg or STYLE.warn_fg)
+        local detail = ok and table.concat(found, ", ") or (req.required and "missing" or "optional")
+
+        writeAt(win, 1, row, marker, color, STYLE.root_bg)
+        writeAt(win, 6, row, truncate(req.label, 14), STYLE.root_fg, STYLE.root_bg)
+        writeAt(win, 22, row, truncate(detail, math.max(1, width - 22)), STYLE.hint_fg, STYLE.root_bg)
+        row = row + 1
+    end
+
+    row = row + 1
+    if any_missing then
+        row = writeParagraph(win, row, "Required hardware is missing. You can continue, but this node will not start correctly until the missing peripherals are attached.", STYLE.err_fg)
+    else
+        row = writeParagraph(win, row, "All required peripherals are present.", STYLE.ok_fg)
+    end
+
+    return waitNav(true, any_missing and "Continue" or "Next", STYLE.next_bg)
+end
+
+local function pageIdentity(cfg)
+    while true do
+        local win = drawChrome("Network Identity")
+        local row = 1
+        local defaultNode = cfg.node_id or (cfg.role .. "_" .. tostring(os.getComputerID()))
+        local defaultChannel = cfg.channel or 42
+        local defaultSecret = cfg.shared_secret or "enmon_default"
+
+        row = writeParagraph(win, row, "Set this node's name and shared network settings. Every node in the same ENMON network must use the same channel and secret.", STYLE.root_fg)
+        row = row + 1
+
+        drawHint("Leave a box blank to keep its default value.")
+        drawNav(true, "Next", STYLE.next_bg)
+
+        local node_id = trim(inputField(win, row, "Node ID", defaultNode))
+        row = row + 3
+        local channel = trim(inputField(win, row, "Network channel", defaultChannel, "[1-65535]"))
+        row = row + 3
+        local secret = trim(inputField(win, row, "Shared secret", defaultSecret))
+
+        local channelNumber = tonumber(channel)
+        if node_id == "" then
+            alert("Network Identity", "Node ID cannot be empty.")
+        elseif not channelNumber or channelNumber < 1 or channelNumber > 65535 then
+            alert("Network Identity", "Channel must be a number between 1 and 65535.")
+        elseif secret == "" then
+            alert("Network Identity", "Shared secret cannot be empty.")
+        else
+            cfg.node_id = node_id
+            cfg.channel = channelNumber
+            cfg.shared_secret = secret
+            return waitNav(true, "Next", STYLE.next_bg)
+        end
+    end
+end
+
+local function pageConnections(cfg)
+    while true do
+        local win = drawChrome("Controller Link")
+        local row = 1
+        local defaultId = cfg.controller_id
+
+        row = writeParagraph(win, row, "Enter the numeric computer ID of the controller. This is not the controller's node name.", STYLE.root_fg)
+        row = row + 1
+
+        drawHint("Controller shows this number in its own setup screens.")
+        drawNav(true, "Next", STYLE.next_bg)
+
+        local raw = trim(inputField(win, row, "Controller computer ID", defaultId or ""))
+        local value = tonumber(raw)
+        if raw:lower() == "q" then return "cancel" end
+        if value then
+            cfg.controller_id = value
+            return waitNav(true, "Next", STYLE.next_bg)
+        end
+
+        alert("Controller Link", "Controller computer ID must be a number.")
+    end
+end
+
+local function pageHardware(cfg)
+    while true do
+        local win = drawChrome("Hardware Setup")
+        local row = 1
+        local monitors = listPeripheralsOfType("monitor")
+        local speakers = listPeripheralsOfType("speaker")
+        local monitorDefault = cfg.monitor_side or monitors[1] or "top"
+        local speakerDefault = cfg.speaker_side or speakers[1] or ""
+
+        row = writeParagraph(win, row, "Choose which attached peripherals ENMON should use on this node.", STYLE.root_fg)
+        row = row + 1
+        if #monitors > 0 then
+            row = writeParagraph(win, row, "Detected monitors: " .. table.concat(monitors, ", "), STYLE.hint_fg)
+        else
+            row = writeParagraph(win, row, "No monitor detected. You can still enter a side/name manually.", STYLE.warn_fg)
+        end
+        if cfg.role == "controller" then
+            if #speakers > 0 then
+                row = writeParagraph(win, row, "Detected speakers: " .. table.concat(speakers, ", "), STYLE.hint_fg)
+            else
+                row = writeParagraph(win, row, "No speaker detected. Leave blank if you do not want alert sounds.", STYLE.hint_fg)
+            end
+        end
+        row = row + 1
+
+        drawHint("Leave the speaker box blank to disable speaker alerts.")
+        drawNav(true, "Next", STYLE.next_bg)
+
+        local monitor = trim(inputField(win, row, "Monitor side/name", monitorDefault))
+        row = row + 3
+
+        local speaker = nil
+        if cfg.role == "controller" then
+            speaker = trim(inputField(win, row, "Speaker side/name", speakerDefault, "[blank = none]"))
+        end
+
+        if monitor == "" then
+            alert("Hardware Setup", "Monitor side/name cannot be empty for this role.")
+        else
+            cfg.monitor_side = monitor
+            if cfg.role == "controller" then
+                cfg.speaker_side = speaker ~= "" and speaker or nil
+            end
+            return waitNav(true, "Next", STYLE.next_bg)
+        end
+    end
+end
+
+local function parseYesNo(value)
+    local normalized = string.lower(trim(value))
+    if normalized == "y" or normalized == "yes" or normalized == "true" or normalized == "1" then
+        return true
+    elseif normalized == "n" or normalized == "no" or normalized == "false" or normalized == "0" then
+        return false
+    end
+    return nil
+end
+
+local function pageAutoControl(cfg)
+    while true do
+        local win = drawChrome("Auto Control")
+        local row = 1
+        local enabledDefault = (cfg.auto_ctrl == nil) and "y" or (cfg.auto_ctrl and "y" or "n")
+        local lowDefault = math.floor(((cfg.threshold_low or 0.25) * 100) + 0.5)
+        local highDefault = math.floor(((cfg.threshold_high or 0.90) * 100) + 0.5)
+
+        row = writeParagraph(win, row, "Controller nodes can automatically start and stop reactors based on the induction matrix fill percentage.", STYLE.root_fg)
+        row = row + 1
+
+        drawHint("Thresholds are percentages. Example: 25 means 25%.")
+        drawNav(true, "Next", STYLE.next_bg)
+
+        local enabled = parseYesNo(inputField(win, row, "Enable auto control? (y/n)", enabledDefault, "[y/n]"))
+        if enabled == nil then
+            alert("Auto Control", "Enter y or n for auto control.")
+        else
+            cfg.auto_ctrl = enabled
+            if enabled then
+                row = row + 3
+                local lowRaw = trim(inputField(win, row, "Start reactors below (%)", lowDefault, "[1-99]"))
+                row = row + 3
+                local highRaw = trim(inputField(win, row, "Stop reactors above (%)", highDefault, "[1-99]"))
+                local low = tonumber(lowRaw)
+                local high = tonumber(highRaw)
+
+                if not low or not high or low < 1 or high > 99 or low >= high then
+                    alert("Auto Control", "Enter valid percentages where low is below high. Example: 25 and 90.")
+                else
+                    cfg.threshold_low = low / 100
+                    cfg.threshold_high = high / 100
+                    return waitNav(true, "Next", STYLE.next_bg)
+                end
+            else
+                cfg.threshold_low = 0.25
+                cfg.threshold_high = 0.90
+                return waitNav(true, "Next", STYLE.next_bg)
+            end
+        end
+    end
+end
+
+local function summaryRows(cfg)
+    local rows = {
+        { "Role", ROLE_LABELS[cfg.role] or cfg.role },
+        { "Node ID", cfg.node_id },
+        { "Channel", tostring(cfg.channel) },
+        { "Shared secret", cfg.shared_secret },
+    }
+    if cfg.controller_id ~= nil then
+        rows[#rows + 1] = { "Controller ID", tostring(cfg.controller_id) }
+    end
+    if cfg.monitor_side then
+        rows[#rows + 1] = { "Monitor", cfg.monitor_side }
+    end
+    if cfg.speaker_side ~= nil then
+        rows[#rows + 1] = { "Speaker", cfg.speaker_side ~= "" and cfg.speaker_side or "none" }
+    end
+    if cfg.role == "controller" then
+        rows[#rows + 1] = { "Auto control", cfg.auto_ctrl and "Yes" or "No" }
+        rows[#rows + 1] = { "Low threshold", tostring(math.floor((cfg.threshold_low or 0.25) * 100 + 0.5)) .. "%" }
+        rows[#rows + 1] = { "High threshold", tostring(math.floor((cfg.threshold_high or 0.90) * 100 + 0.5)) .. "%" }
+    end
+    return rows
+end
+
+local function pageConfirm(cfg)
+    local win = drawChrome("Review Configuration")
+    local row = 1
+    local width = select(1, win.getSize())
+
+    row = writeParagraph(win, row, "Review the configuration below before files are downloaded and written to disk.", STYLE.root_fg)
+    row = row + 1
+
+    for _, item in ipairs(summaryRows(cfg)) do
+        writeAt(win, 1, row, truncate(item[1], 16), STYLE.label_fg, STYLE.root_bg)
+        writeAt(win, 18, row, string.rep(" ", math.max(1, width - 18)), STYLE.value_fg, STYLE.value_bg)
+        writeAt(win, 19, row, truncate(item[2], math.max(1, width - 19)), STYLE.value_fg, STYLE.value_bg)
+        row = row + 1
+    end
+
+    return waitNav(true, "Install", STYLE.install_bg)
+end
+
+local function buildPages(role)
+    local pages = { pageRole }
+    if role then
+        pages[#pages + 1] = pagePeripherals
+        pages[#pages + 1] = pageIdentity
+        if role ~= "controller" then
+            pages[#pages + 1] = pageConnections
+        end
+        if role == "controller" or role == "display" then
+            pages[#pages + 1] = pageHardware
+        end
+        if role == "controller" then
+            pages[#pages + 1] = pageAutoControl
+        end
+        pages[#pages + 1] = pageConfirm
+    end
+    return pages
+end
+
+local function runWizard()
+    local cfg = {}
+    local idx = 1
+
+    while true do
+        local pages = buildPages(cfg.role)
+        if idx > #pages then
+            return cfg
+        end
+
+        local action = pages[idx](cfg)
+        if action == "cancel" then
+            return nil
+        elseif action == "back" then
+            idx = math.max(1, idx - 1)
+        else
+            idx = idx + 1
+        end
+    end
+end
+
+-- Download helpers -----------------------------------------------------------
 
 local function ensureDir(path)
     if path ~= "" and not fs.isDir(path) then fs.makeDir(path) end
@@ -289,9 +681,11 @@ local function fetchManifest()
         return nil, "HTTP failed: " .. tostring(herr) .. "\nURL: " .. MANIFEST
     end
     local code = response.getResponseCode and response.getResponseCode() or 200
-    local raw  = response.readAll()
+    local raw = response.readAll()
     response.close()
-    if code ~= 200 then return nil, "HTTP " .. code .. " for manifest" end
+    if code ~= 200 then
+        return nil, "HTTP " .. code .. " for manifest"
+    end
     local ok, data = pcall(textutils.unserializeJSON, raw)
     if not ok or type(data) ~= "table" then
         return nil, "Manifest parse error"
@@ -299,105 +693,126 @@ local function fetchManifest()
     return data, nil
 end
 
--- ── Main ───────────────────────────────────────────────────────────────────────
+local function makeInstallLogger()
+    local win = drawChrome("Installing")
+    local _, h = win.getSize()
+    local lines = {}
+
+    local function redraw()
+        clearWindow(win, STYLE.root_bg, STYLE.root_fg)
+        local start = math.max(1, #lines - h + 1)
+        local row = 1
+        for i = start, #lines do
+            local entry = lines[i]
+            writeAt(win, 1, row, entry.text, entry.fg or STYLE.root_fg, STYLE.root_bg)
+            row = row + 1
+        end
+        drawHint("Do not power off this computer while files are downloading.")
+    end
+
+    local function log(text, fg)
+        lines[#lines + 1] = { text = tostring(text), fg = fg }
+        redraw()
+    end
+
+    redraw()
+    return log
+end
+
+local function askLaunchFallback(message)
+    local win = drawChrome("Install Complete")
+    local row = 1
+    row = writeParagraph(win, row, message, STYLE.warn_fg)
+    row = row + 1
+    row = writeParagraph(win, row, "Open ENMON now?", STYLE.root_fg)
+    local action = waitNav(false, "Launch", STYLE.next_bg)
+    return action == "forward"
+end
+
+-- Main -----------------------------------------------------------------------
 
 cls()
-header()
 
 if not http then
-    colored(colors.red, function() print("HTTP is disabled. Enable it in server config.") end)
+    alert("HTTP Disabled", "HTTP is disabled in ComputerCraft. Enable it on the server before running the installer.")
+    cls()
     return
 end
 
--- 1. Role
-local role = pickRole()
-
--- 2. Peripheral check
-checkPeripherals(role)
-
--- 3. Config wizard
-local cfg = runWizard(role)
-
--- 4. Confirm before downloading
-print()
-colored(colors.yellow, function() print("-- Ready to download --") end)
-print("  Role:    " .. cfg.role)
-print("  Node ID: " .. cfg.node_id)
-print("  Channel: " .. cfg.channel)
-print()
-if not promptYesNo("Download files and complete installation?", true) then
-    print("Cancelled.")
+local cfg = runWizard()
+if not cfg then
+    cls()
     return
 end
 
--- 5. Fetch manifest
-print()
-io.write("Fetching manifest... ")
-local manifest, merr = fetchManifest()
+local log = makeInstallLogger()
+log("Fetching manifest...", STYLE.hint_fg)
+
+local manifest, manifestErr = fetchManifest()
 if not manifest then
-    colored(colors.red, function() print("FAILED\n  " .. tostring(merr)) end)
+    log("ERROR: " .. tostring(manifestErr), STYLE.err_fg)
+    log("Press any key to exit.", STYLE.hint_fg)
+    waitAnyKey()
+    cls()
     return
 end
-colored(colors.green, function() print("OK") end)
-print()
 
--- 6. Download common + role files
+log("Manifest fetched.", STYLE.ok_fg)
+log("Downloading files for role: " .. cfg.role, STYLE.root_fg)
+
 local files = {}
-for _, f in ipairs(manifest.files.common or {}) do files[#files+1] = f end
-for _, f in ipairs(manifest.files[role]  or {}) do files[#files+1] = f end
+for _, path in ipairs(manifest.files.common or {}) do files[#files + 1] = path end
+for _, path in ipairs(manifest.files[cfg.role] or {}) do files[#files + 1] = path end
 
 local failed = {}
 for _, path in ipairs(files) do
     local ok, err = download(manifest.base_url .. path, path)
-    status(ok, path)
-    if not ok then failed[#failed+1] = {path=path, err=err} end
+    if ok then
+        log("[OK]  " .. path, STYLE.ok_fg)
+    else
+        log("[ERR] " .. path .. " - " .. tostring(err), STYLE.err_fg)
+        failed[#failed + 1] = { path = path, err = err }
+    end
 end
 
--- 7. Download Basalt 2
-print()
-io.write("Downloading Basalt 2... ")
-local basalt_ok, basalt_err = download(BASALT_URL, "lib/basalt.lua")
-status(basalt_ok, "lib/basalt.lua")
-if not basalt_ok then failed[#failed+1] = {path="lib/basalt.lua", err=basalt_err} end
+local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua")
+if basaltOk then
+    log("[OK]  lib/basalt.lua", STYLE.ok_fg)
+else
+    log("[ERR] lib/basalt.lua - " .. tostring(basaltErr), STYLE.err_fg)
+    failed[#failed + 1] = { path = "lib/basalt.lua", err = basaltErr }
+end
 
 if #failed > 0 then
-    print()
-    colored(colors.red, function()
-        print("  " .. #failed .. " file(s) failed to download:")
-        for _, f in ipairs(failed) do print("    - " .. f.path) end
-    end)
-    print("Check HTTP settings and re-run installer.")
+    log("Install failed. Check HTTP and download URLs, then re-run installer.", STYLE.err_fg)
+    log("Press any key to exit.", STYLE.hint_fg)
+    waitAnyKey()
+    cls()
     return
 end
 
--- 8. Write enmon.cfg  (write directly; lib/config is now present but avoid require during install)
-local f = fs.open("enmon.cfg", "w")
-f.write(textutils.serialize(cfg))
-f.close()
-status(true, "enmon.cfg written")
+local cfgFile = fs.open("enmon.cfg", "w")
+cfgFile.write(textutils.serialize(cfg))
+cfgFile.close()
+log("[OK]  enmon.cfg written", STYLE.ok_fg)
 
--- 9. Write startup.lua
-local sf = fs.open("startup.lua", "w")
-sf.write('shell.run("enmon.lua")\n')
-sf.close()
-status(true, "startup.lua written")
+local startup = fs.open("startup.lua", "w")
+startup.write('shell.run("enmon.lua")\n')
+startup.close()
+log("[OK]  startup.lua written", STYLE.ok_fg)
+log("Installation complete. Opening config review...", STYLE.ok_fg)
 
--- 10. Launch config editor (Basalt is now available)
-print()
-colored(colors.green, function() print("  Installation complete! Opening config review...") end)
 os.sleep(0.8)
 
-local ok_ed, editor = pcall(require, "ui/config_editor")
-if not ok_ed then
-    -- Basalt failed to load or editor error: fall back to plain prompt
-    colored(colors.yellow, function() print("  Config editor unavailable: " .. tostring(editor)) end)
-    print()
-    if promptYesNo("Start ENMON now?", true) then
+local okEditor, editor = pcall(require, "ui/config_editor")
+if okEditor then
+    local action = editor.run(cfg)
+    if action == "launch" then
         shell.run("enmon.lua")
     end
 else
-    local action = editor.run(cfg)
-    if action == "launch" then
+    local launch = askLaunchFallback("Config editor unavailable: " .. tostring(editor))
+    if launch then
         shell.run("enmon.lua")
     end
 end

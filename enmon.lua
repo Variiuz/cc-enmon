@@ -4,7 +4,7 @@
 -- Reads enmon.cfg written by installer.lua and dispatches to the role module.
 -- If no config exists, print an error and exit (run installer.lua first).
 
-local VERSION = "0.1.0"
+local VERSION = "0.2.0"
 
 -- Inject the script's directory into the package path so require() works
 -- regardless of where the file lives on the CC filesystem.
