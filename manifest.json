@@ -1,0 +1,33 @@
+{
+  "version": "0.1.0",
+  "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/main/",
+  "files": {
+    "common": [
+      "enmon.lua",
+      "lib/config.lua",
+      "lib/util.lua",
+      "lib/hmac.lua",
+      "lib/network.lua",
+      "lib/peripheral_mgr.lua",
+      "ui/setup.lua"
+    ],
+    "controller": [
+      "nodes/controller.lua",
+      "ui/controller_hud.lua"
+    ],
+    "matrix": [
+      "nodes/matrix.lua"
+    ],
+    "reactor": [
+      "nodes/reactor.lua"
+    ],
+    "display": [
+      "nodes/display.lua",
+      "ui/display_hud.lua"
+    ],
+    "pocket": [
+      "nodes/pocket.lua",
+      "ui/pocket_hud.lua"
+    ]
+  }
+}
