@@ -4,13 +4,13 @@
 -- Writes startup.lua and optionally launches ENMON immediately.
 --
 -- In-game install command:
---   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua
+--   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/installer.lua installer.lua
 --   installer
 
 local VERSION    = "0.1.0"
-local BASE_URL   = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/"
+local BASE_URL   = "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/"
 local MANIFEST   = BASE_URL .. "manifest.json"
-local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/Basalt/basalt.lua"
+local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/refs/heads/main/Basalt/basalt.lua"
 
 local ROLE_LABELS = {
     controller = "Controller  (monitor + modem + optional speaker)",
