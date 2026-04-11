@@ -1,8 +1,8 @@
 -- enmon.lua
 -- Entry point for ENMON - Energy Network Monitor.
 -- Run this file directly (or via startup.lua).
--- If no enmon.cfg exists, runs the setup wizard first.
--- Then dispatches to the appropriate node module based on configured role.
+-- Reads enmon.cfg written by installer.lua and dispatches to the role module.
+-- If no config exists, print an error and exit (run installer.lua first).
 
 local VERSION = "0.1.0"
 
@@ -32,19 +32,15 @@ print("ENMON v" .. VERSION .. "  -  Energy Network Monitor")
 term.setTextColor(colors.white)
 print()
 
--- First run: launch setup wizard
+-- First run: no config found
 if not config.exists() then
-    local setup = require("ui/setup")
-    local launch_now = setup.run()
-    if not launch_now then
-        print("Exiting. Run enmon.lua again to start.")
-        return
-    end
-    -- Reload config that was just written
-    config.load()
-else
-    config.load()
+    term.setTextColor(colors.red)
+    print("No configuration found.")
+    print("Run installer.lua to set up this node.")
+    term.setTextColor(colors.white)
+    return
 end
+config.load()
 
 -- ── Role dispatch ──────────────────────────────────────────────────────────────
 local role = config.get("role")
