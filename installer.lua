@@ -95,12 +95,17 @@ local function pickRole()
         colored(colors.cyan, function() io.write("  [" .. i .. "] ") end)
         print(ROLE_LABELS[role])
     end
+    colored(colors.lightGray, function() print("  [q] Quit") end)
     print()
     while true do
         term.setTextColor(colors.cyan)
         io.write("Enter number: ")
         term.setTextColor(colors.white)
         local input = io.read()
+        if input == nil or input:lower() == "q" then
+            print("Installer cancelled.")
+            error("quit", 0)
+        end
         local n = tonumber(input)
         if n and ROLE_ORDER[n] then return ROLE_ORDER[n] end
         colored(colors.red, function() print("  Invalid choice.") end)
@@ -186,9 +191,13 @@ end
 print()
 -- 8. Launch setup / ENMON now?
 term.setTextColor(colors.cyan)
-io.write("Start ENMON now (runs setup wizard on first boot)? [Y/n]: ")
+io.write("Start ENMON now (runs setup wizard on first boot)? [Y/n/q]: ")
 term.setTextColor(colors.white)
 local ans = io.read()
-if ans == nil or ans == "" or ans:lower() == "y" then
-    shell.run("enmon.lua")
+if ans ~= nil and ans:lower() == "q" then
+    print("Exiting.")
+else
+    if ans == nil or ans == "" or ans:lower() == "y" then
+        shell.run("enmon.lua")
+    end
 end
