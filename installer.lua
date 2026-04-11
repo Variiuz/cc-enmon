@@ -4,7 +4,7 @@
 -- Writes startup.lua and optionally launches ENMON immediately.
 --
 -- In-game install command:
---   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/main/installer.lua installer.lua
+--   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua
 --   installer
 
 local VERSION    = "0.1.0"
@@ -70,12 +70,20 @@ end
 
 -- Fetch manifest JSON and parse it.
 local function fetchManifest()
-    local response = http.get(MANIFEST)
-    if not response then return nil, "Could not fetch manifest" end
-    local raw = response.readAll()
+    local response, err = http.get(MANIFEST)
+    if not response then
+        return nil, "HTTP failed for: " .. MANIFEST .. "\n  (" .. tostring(err) .. ")"
+    end
+    local code = response.getResponseCode and response.getResponseCode() or 200
+    local raw  = response.readAll()
     response.close()
+    if code ~= 200 then
+        return nil, "HTTP " .. code .. " for: " .. MANIFEST
+    end
     local ok, data = pcall(textutils.unserializeJSON, raw)
-    if not ok or type(data) ~= "table" then return nil, "Manifest parse error" end
+    if not ok or type(data) ~= "table" then
+        return nil, "Manifest parse error (got: " .. tostring(raw):sub(1,40) .. ")"
+    end
     return data, nil
 end
 
