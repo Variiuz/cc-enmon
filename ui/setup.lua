@@ -126,6 +126,85 @@ local function pickSpeakerSide()
     return nil
 end
 
+-- Check that the peripherals required for a given role are present.
+-- Prints warnings but does not block — lets the user proceed and fix later.
+local ROLE_REQUIREMENTS = {
+    controller = {
+        { types = {"ender_modem", "modem"},               label = "Ender modem",       required = true  },
+        { types = {"monitor"},                             label = "Monitor",            required = true  },
+        { types = {"speaker"},                             label = "Speaker (optional)", required = false },
+    },
+    matrix = {
+        { types = {"ender_modem", "modem"},               label = "Ender modem",        required = true },
+        { types = {"mekanism:induction_port"},            label = "Induction Port",      required = true },
+    },
+    reactor = {
+        { types = {"ender_modem", "modem"},               label = "Ender modem",         required = true },
+        { types = {"BigReactors-Reactor",
+                   "bigger_reactors:reactor_access_port",
+                   "bigreactors:reactor_access_port"},    label = "Reactor Port",        required = true },
+    },
+    display = {
+        { types = {"ender_modem", "modem"},               label = "Ender modem",         required = true },
+        { types = {"monitor"},                            label = "Monitor",             required = true },
+    },
+    pocket = {
+        { types = {"ender_modem", "modem"},               label = "Ender modem",         required = true },
+    },
+}
+
+local function checkPeripherals(role)
+    local reqs = ROLE_REQUIREMENTS[role]
+    if not reqs then return end
+
+    -- Build a flat set of all connected peripheral types
+    local connected = {}
+    for _, name in ipairs(peripheral.getNames()) do
+        local t = peripheral.getType(name)
+        if t then connected[t] = true end
+    end
+
+    print()
+    term.setTextColor(colors.yellow)
+    print("-- Peripheral check for role: " .. role .. " --")
+    term.setTextColor(colors.white)
+
+    local any_missing = false
+    for _, req in ipairs(reqs) do
+        local found = false
+        for _, t in ipairs(req.types) do
+            if connected[t] then found = true; break end
+        end
+        if found then
+            term.setTextColor(colors.green)
+            print("  [OK]   " .. req.label)
+        elseif req.required then
+            term.setTextColor(colors.red)
+            print("  [MISS] " .. req.label .. "  <-- REQUIRED")
+            any_missing = true
+        else
+            term.setTextColor(colors.yellow)
+            print("  [--]   " .. req.label .. "  (not connected)")
+        end
+    end
+    term.setTextColor(colors.white)
+
+    if any_missing then
+        print()
+        term.setTextColor(colors.red)
+        print("  WARNING: Required peripherals are missing.")
+        print("  Connect them and reboot before running ENMON.")
+        term.setTextColor(colors.white)
+        print()
+        local cont = promptYesNo("Continue setup anyway?", false)
+        if not cont then
+            print("Setup cancelled. Reconnect peripherals and re-run enmon.lua.")
+            error("peripheral check failed", 0)
+        end
+    end
+    print()
+end
+
 function setup.run()
     cls()
     header()
@@ -136,6 +215,8 @@ function setup.run()
 
     local role = pickRole()
     config.set("role", role)
+
+    checkPeripherals(role)
 
     -- Node ID
     local default_id = role .. "_" .. tostring(os.getComputerID())
