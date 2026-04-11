@@ -42,6 +42,12 @@ function config.load()
     local ok, parsed = pcall(textutils.unserialize, raw)
     if ok and type(parsed) == "table" then
         _data = parsed
+        -- Coerce numeric fields that must be numbers.
+        -- Protects against configs written as strings (e.g. old wizard or manual edits).
+        if _data.channel       ~= nil then _data.channel       = tonumber(_data.channel)       or DEFAULTS.channel end
+        if _data.controller_id ~= nil then _data.controller_id = tonumber(_data.controller_id) end
+        if _data.threshold_low  ~= nil then _data.threshold_low  = tonumber(_data.threshold_low)  end
+        if _data.threshold_high ~= nil then _data.threshold_high = tonumber(_data.threshold_high) end
         return true
     end
     _data = {}

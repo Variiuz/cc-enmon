@@ -164,6 +164,28 @@ function controller.run(cfg)
         if speaker then print("[ctrl] Speaker attached: " .. spk_side) end
     end
 
+    -- ── Network info panel (terminal only, monitor stays for HUD) ────────────
+    -- Displayed so the user can read connection details for setting up other nodes.
+    do
+        local w = term.getSize()
+        local line = string.rep("-", w)
+        term.setTextColor(colors.yellow)
+        print(line)
+        print("  ENMON  Controller ready")
+        print(line)
+        term.setTextColor(colors.lightBlue)
+        print("  Computer ID : " .. os.getComputerID())
+        term.setTextColor(colors.white)
+        print("  Node name   : " .. tostring(cfg.get("node_id")))
+        print("  Channel     : " .. tostring(cfg.get("channel")))
+        print("  Secret      : " .. tostring(cfg.get("shared_secret")))
+        term.setTextColor(colors.yellow)
+        print("  ^ Give Computer ID + Channel + Secret to each sensor/pocket node.")
+        term.setTextColor(colors.white)
+        print(line)
+        print()
+    end
+
     -- Initialise HUD (sets up Basalt on the monitor)
     local mon_side = cfg.get("monitor_side")
     hud.init(mon_side, cfg, controller)

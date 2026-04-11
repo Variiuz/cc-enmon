@@ -21,20 +21,25 @@ local MATRIX_TYPES  = {
 
 local matrix = {}
 
--- Try each known type string, then fall back to method-based detection.
+-- Try each known type string, validating the peripheral actually responds.
+-- Falls back to scanning all peripherals for any with the Mekanism energy API.
 local function findInductionPort()
     for _, t in ipairs(MATRIX_TYPES) do
         local p = pmgr.find(t)
-        if p then return p end
+        -- Confirm it actually responds (peripheral.find can return stale entries)
+        if p and pcall(p.getEnergy, p) then return p end
     end
-    -- Method-based fallback: any peripheral with the right Mekanism energy API
+    -- Method-based fallback: scan everything, require getEnergy + some capacity method
     for _, name in ipairs(peripheral.getNames()) do
         local ok, p = pcall(peripheral.wrap, name)
-        if ok and p
-                and type(p.getEnergy)    == "function"
-                and type(p.getMaxEnergy) == "function"
-                and type(p.getLastInput)  == "function" then
-            return p
+        if ok and p and type(p.getEnergy) == "function" then
+            local has_cap = type(p.getMaxEnergy)      == "function"
+                         or type(p.getEnergyCapacity) == "function"
+            local responds = pcall(p.getEnergy, p)
+            if has_cap and responds then
+                print("[matrix] Found induction port via method scan: " .. name)
+                return p
+            end
         end
     end
     return nil
@@ -66,20 +71,25 @@ local function openNet(cfg)
 end
 
 local function pollMatrix(port)
-    local energy,   e_err = pmgr.call(port, "getEnergy")
-    local maxEnergy, m_err = pmgr.call(port, "getMaxEnergy")
-    local lastInput, i_err = pmgr.call(port, "getLastInput")
-    local lastOutput,o_err = pmgr.call(port, "getLastOutput")
+    -- Energy stored — required
+    local energy, e_err = pmgr.call(port, "getEnergy")
+    if e_err then return nil, e_err end
 
-    if e_err or m_err then
-        return nil, e_err or m_err
+    -- Max capacity: Mekanism <10 uses getMaxEnergy, >=10 uses getEnergyCapacity
+    local maxEnergy = pmgr.call(port, "getMaxEnergy")
+    if maxEnergy == nil then
+        maxEnergy = pmgr.call(port, "getEnergyCapacity")
     end
 
+    -- I/O rates: soft-fail if absent in this modpack version
+    local lastInput  = pmgr.call(port, "getLastInput")  or 0
+    local lastOutput = pmgr.call(port, "getLastOutput") or 0
+
     return {
-        energy      = energy      or 0,
-        max_energy  = maxEnergy   or 0,
-        last_input  = lastInput   or 0,
-        last_output = lastOutput  or 0,
+        energy      = energy     or 0,
+        max_energy  = maxEnergy  or 0,
+        last_input  = lastInput,
+        last_output = lastOutput,
     }, nil
 end
 
