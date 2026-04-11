@@ -9,7 +9,8 @@
       "lib/hmac.lua",
       "lib/network.lua",
       "lib/peripheral_mgr.lua",
-      "ui/setup.lua"
+      "ui/setup.lua",
+      "ui/config_editor.lua"
     ],
     "controller": [
       "nodes/controller.lua",

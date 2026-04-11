@@ -256,18 +256,6 @@ local function runWizard(role)
             cfg.threshold_high = 0.90
         end
 
-        -- Show this computer's CC ID so the user can give it to other nodes
-        print()
-        colored(colors.lightBlue, function()
-            local w = term.getSize()
-            print(string.rep("-", w))
-            print("  Controller computer ID: " .. os.getComputerID())
-            print("  Write this number down! Every other node (matrix,")
-            print("  reactor, display, pocket) needs it during setup.")
-            print(string.rep("-", w))
-        end)
-        print()
-        prompt("Press Enter to continue", "")
     end
 
     return cfg
@@ -394,11 +382,22 @@ sf.write('shell.run("enmon.lua")\n')
 sf.close()
 status(true, "startup.lua written")
 
--- 10. Done
+-- 10. Launch config editor (Basalt is now available)
 print()
-colored(colors.green, function() print("  Installation complete!") end)
-print()
+colored(colors.green, function() print("  Installation complete! Opening config review...") end)
+os.sleep(0.8)
 
-if promptYesNo("Start ENMON now?", true) then
-    shell.run("enmon.lua")
+local ok_ed, editor = pcall(require, "ui/config_editor")
+if not ok_ed then
+    -- Basalt failed to load or editor error: fall back to plain prompt
+    colored(colors.yellow, function() print("  Config editor unavailable: " .. tostring(editor)) end)
+    print()
+    if promptYesNo("Start ENMON now?", true) then
+        shell.run("enmon.lua")
+    end
+else
+    local action = editor.run(cfg)
+    if action == "launch" then
+        shell.run("enmon.lua")
+    end
 end
