@@ -35,8 +35,9 @@ local ROLE_REQUIREMENTS = {
         { types = {"speaker"},                         label = "Speaker (optional)",  required = false },
     },
     matrix = {
-        { types = {"ender_modem", "modem"},            label = "Ender modem",         required = true },
-        { types = {"mekanism:induction_port"},         label = "Induction Port",      required = true },
+        { types = {"ender_modem", "modem"},                          label = "Ender modem",     required = true },
+        { types = {"mekanism:induction_port", "inductionPort",
+                   "mekanism.induction_port"},                       label = "Induction Port",  required = true },
     },
     reactor = {
         { types = {"ender_modem", "modem"},            label = "Ender modem",         required = true },
@@ -211,6 +212,10 @@ local function runWizard(role)
     -- Controller ID (non-controller roles)
     if role ~= "controller" then
         print()
+        colored(colors.yellow, function()
+            print("  This is the NUMERIC computer ID of the controller computer,")
+            print("  NOT its node name. Run `id` on the controller to find it.")
+        end)
         cfg.controller_id = promptNumber("Controller computer ID", nil, 0)
     end
 
@@ -250,6 +255,19 @@ local function runWizard(role)
             cfg.threshold_low  = 0.25
             cfg.threshold_high = 0.90
         end
+
+        -- Show this computer's CC ID so the user can give it to other nodes
+        print()
+        colored(colors.lightBlue, function()
+            local w = term.getSize()
+            print(string.rep("-", w))
+            print("  Controller computer ID: " .. os.getComputerID())
+            print("  Write this number down! Every other node (matrix,")
+            print("  reactor, display, pocket) needs it during setup.")
+            print(string.rep("-", w))
+        end)
+        print()
+        prompt("Press Enter to continue", "")
     end
 
     return cfg

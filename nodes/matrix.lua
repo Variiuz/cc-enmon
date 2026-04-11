@@ -12,9 +12,41 @@ local util = require("lib/util")
 
 local POLL_INTERVAL = 2   -- seconds between broadcasts
 local MODEM_TYPE    = "ender_modem"
-local MATRIX_TYPE   = "mekanism:induction_port"
+-- Known peripheral type strings for Mekanism induction port across versions
+local MATRIX_TYPES  = {
+    "mekanism:induction_port",
+    "inductionPort",
+    "mekanism.induction_port",
+}
 
 local matrix = {}
+
+-- Try each known type string, then fall back to method-based detection.
+local function findInductionPort()
+    for _, t in ipairs(MATRIX_TYPES) do
+        local p = pmgr.find(t)
+        if p then return p end
+    end
+    -- Method-based fallback: any peripheral with the right Mekanism energy API
+    for _, name in ipairs(peripheral.getNames()) do
+        local ok, p = pcall(peripheral.wrap, name)
+        if ok and p
+                and type(p.getEnergy)    == "function"
+                and type(p.getMaxEnergy) == "function"
+                and type(p.getLastInput)  == "function" then
+            return p
+        end
+    end
+    return nil
+end
+
+local function waitForPort()
+    while true do
+        local p = findInductionPort()
+        if p then return p end
+        os.sleep(1)
+    end
+end
 
 local function findModem()
     local m = pmgr.find(MODEM_TYPE)
@@ -58,7 +90,7 @@ function matrix.run(cfg)
 
     -- Wait for the induction port to become available
     print("[matrix] Waiting for induction port...")
-    local port = pmgr.waitFor(MATRIX_TYPE)
+    local port = waitForPort()
     if not port then
         error("Induction port not found.")
     end
@@ -80,7 +112,7 @@ function matrix.run(cfg)
             if consecutive_errors >= MAX_ERRORS then
                 -- Peripheral likely disconnected; attempt to reconnect
                 print("[matrix] Too many errors — waiting for induction port to reconnect...")
-                port = pmgr.waitFor(MATRIX_TYPE)
+                port = waitForPort()
                 if port then
                     consecutive_errors = 0
                     print("[matrix] Reconnected.")
