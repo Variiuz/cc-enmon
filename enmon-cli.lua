@@ -10,58 +10,36 @@ local args = {...}
 local config = require("lib/config")
 local updater = require("lib/updater")
 local version = require("lib/version")
-local runtime_panel = require("ui/runtime_panel")
 
 local VERSION = version.getVersion()
 
-local function cls() term.clear(); term.setCursorPos(1, 1) end
+local function println(text, color)
+    if color then
+        term.setTextColor(color)
+    end
+    print(tostring(text or ""))
+    term.setTextColor(colors.white)
+end
 
-local cli_ui = nil
+local function logLine(message)
+    println("[ENMON CLI] " .. tostring(message), colors.lightBlue)
+end
 
 local function fatal(msg)
-    if cli_ui then
-        cli_ui.setSection("CLI Error")
-        cli_ui.setSummary({
-            { "Version", VERSION },
-            { "Command", table.concat(args, " ") ~= "" and table.concat(args, " ") or "--" },
-            { "Error", tostring(msg), colors.red, colors.white },
-        })
-        cli_ui.setHint("Any key Exit")
-        os.pullEvent("key")
-    else
-        term.setTextColor(colors.red)
-        print("[ENMON CLI] ERROR: " .. tostring(msg))
-        term.setTextColor(colors.white)
-    end
+    println("[ENMON CLI] ERROR: " .. tostring(msg), colors.red)
     error(msg, 0)
 end
 
 local function showUsage()
-    cli_ui.setSection("CLI Help")
-    cli_ui.setSummary({
-        { "Version", VERSION },
-        { "Usage", "enmon-cli <command>" },
-        { "Commands", "update [force]" },
-    })
-    cli_ui.log("update        Refresh only if remote version is newer", colors.lightBlue)
-    cli_ui.log("update force  Reapply files even if the version is unchanged", colors.lightBlue)
-    cli_ui.setHint("Any key Exit")
-    os.pullEvent("key")
+    println("ENMON CLI " .. tostring(VERSION), colors.cyan)
+    println("Usage: enmon-cli <command>")
+    println("Commands:")
+    println("  update        Refresh only if remote version is newer")
+    println("  update force  Reapply files even if the version is unchanged")
 end
 
-cls()
-cli_ui = runtime_panel.new("CLI", { interactive_scroll = true })
-cli_ui.setSummary({
-    { "Version", VERSION },
-    { "Command", table.concat(args, " ") ~= "" and table.concat(args, " ") or "help" },
-    { "Status", "Preparing..." },
-})
-cli_ui.setHint("")
-
 local resumed, resumeErr = updater.resumeInterruptedUpdate(function(message)
-    if cli_ui then
-        cli_ui.log(message, colors.lightBlue)
-    end
+    logLine(message)
 end)
 
 if not resumed then
@@ -85,22 +63,16 @@ config.load()
 
 local forceUpdate = args[2] == "force" or args[2] == "--force"
 
-cli_ui.setSection("Updater")
-cli_ui.setSummary({
-    { "Version", VERSION },
-    { "Role", tostring(config.get("role")) },
-    { "Mode", forceUpdate and "Force" or "Normal" },
-    { "Status", "Checking for updates..." },
-})
-cli_ui.setHint("")
+println("ENMON CLI " .. tostring(VERSION), colors.cyan)
+println("Role: " .. tostring(config.get("role")))
+println("Mode: " .. (forceUpdate and "Force" or "Normal"))
+println("Checking for updates...")
 
 local ok, result = updater.applyLocalUpdate({
     role = config.get("role"),
     force = forceUpdate,
     logger = function(message)
-        if cli_ui then
-            cli_ui.log(message, colors.lightBlue)
-        end
+        logLine(message)
     end,
 })
 
@@ -109,20 +81,11 @@ if not ok then
 end
 
 if not result.updated then
-    cli_ui.setSummary({
-        { "Version", VERSION },
-        { "Role", tostring(config.get("role")) },
-        { "Status", "Already up to date", colors.lime, colors.white },
-    })
-    cli_ui.setHint("Any key Exit")
-    os.pullEvent("key")
+    println("Already up to date.", colors.lime)
     return
 end
 
-cli_ui.setSummary({
-    { "From", tostring(result.from_version) },
-    { "To", tostring(result.to_version) },
-    { "Status", "Update complete - rebooting", colors.lime, colors.white },
-})
+println("Updated: " .. tostring(result.from_version) .. " -> " .. tostring(result.to_version), colors.lime)
+println("Rebooting...")
 os.sleep(0.3)
 os.reboot()
