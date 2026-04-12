@@ -27,7 +27,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.3.9", 0)
+local VERSION    = composeReleaseLabel("0.3.9", 1)
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -1163,7 +1163,7 @@ local function showInstallComplete(role)
     row = row + 1
     row = writeParagraph(win, row, "Selected branch: " .. tostring(INSTALL_BRANCH), STYLE.root_fg)
     row = row + 1
-    row = writeParagraph(win, row, "startup.lua has already been written, so ENMON will launch automatically after a reboot.", STYLE.root_fg)
+    row = writeParagraph(win, row, "startup.lua has been written by default, so ENMON will launch automatically after a reboot.", STYLE.root_fg)
     row = row + 1
     row = writeParagraph(win, row, "Reboot now to start ENMON, or Exit if you want to reboot later.", STYLE.hint_fg)
     local action = waitNav(false, "Reboot", STYLE.install_bg)
@@ -1268,19 +1268,4 @@ cls()
 if rebootNow then
     os.reboot()
 end
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
