@@ -27,7 +27,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.3.9", 3)
+local VERSION    = composeReleaseLabel("0.3.9", 4)
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -597,15 +597,36 @@ local function listPeripheralsOfType(ptype)
     return found
 end
 
-local function listModems()
-    local found = {}
-    for _, name in ipairs(peripheral.getNames()) do
-        local ptype = peripheral.getType(name)
-        if ptype == "ender_modem" or ptype == "modem" then
-            found[#found + 1] = name
+local function describeModem(name)
+    local peripheralRef = pmgr.wrap(name)
+    if not peripheralRef then
+        return tostring(name) .. " (missing)"
+    end
+
+    local wireless = pmgr.isWireless(peripheralRef)
+    if wireless == true then
+        return tostring(name) .. " (ender modem)"
+    elseif wireless == false then
+        return tostring(name) .. " (wired)"
+    end
+
+    return tostring(name) .. " (modem)"
+end
+
+local function resolveAutoModemSide(cfg)
+    if type(cfg.modem_side) == "string" and cfg.modem_side ~= "" then
+        local peripheralRef = pmgr.wrap(cfg.modem_side)
+        if peripheralRef and pmgr.isWireless(peripheralRef) == true then
+            return cfg.modem_side, "saved"
         end
     end
-    return found
+
+    local wireless = pmgr.listWirelessModems()
+    if #wireless == 1 then
+        return wireless[1], "detected"
+    end
+
+    return nil, (#wireless > 1) and "multiple" or "missing"
 end
 
 local function findMatchingNames(types)
@@ -748,15 +769,9 @@ local function pageIdentity(cfg)
         local row = 1
         local defaultNode = cfg.node_id or (cfg.role .. "_" .. tostring(os.getComputerID()))
         local defaultChannel = cfg.channel or 42
-        local modems = listModems()
-        local defaultModem = cfg.modem_side or modems[1] or ""
 
-        row = writeParagraph(win, row, "Set this node's name, channel, and which modem ENMON should use. New non-controller nodes will appear as unlinked on that channel until a controller adopts them.", STYLE.root_fg)
+        row = writeParagraph(win, row, "Set this node's name and channel. New non-controller nodes will appear as unlinked on that channel until a controller adopts them.", STYLE.root_fg)
         row = row + 1
-        if #modems > 0 then
-            row = writeParagraph(win, row, "Detected modems: " .. table.concat(modems, ", "), STYLE.hint_fg)
-            row = row + 1
-        end
 
         drawHint("Leave a box blank to keep its default value.")
         drawNav(true, "Next", STYLE.next_bg)
@@ -764,8 +779,6 @@ local function pageIdentity(cfg)
         local node_id = trim(inputField(win, row, "Node ID", defaultNode))
         row = row + 3
         local channel = trim(inputField(win, row, "Network channel", defaultChannel, "[1-65535]"))
-        row = row + 3
-        local modem_side = trim(inputField(win, row, "Modem side/name", defaultModem, "[blank = auto]"))
 
         local channelNumber = tonumber(channel)
         if node_id == "" then
@@ -775,7 +788,49 @@ local function pageIdentity(cfg)
         else
             cfg.node_id = node_id
             cfg.channel = channelNumber
-            cfg.modem_side = modem_side ~= "" and modem_side or nil
+            return "forward"
+        end
+    end
+end
+
+local function pageModem(cfg)
+    while true do
+        local win = drawChrome("Modem Selection")
+        local row = 1
+        local modems = pmgr.listModems()
+        local wireless = pmgr.listWirelessModems()
+        local defaultModem = cfg.modem_side or wireless[1] or modems[1] or ""
+
+        row = writeParagraph(win, row, "Choose the ender modem ENMON should use for network traffic. This screen only appears when ENMON cannot confidently auto-select the only wireless-class modem.", STYLE.root_fg)
+        row = row + 1
+        if #modems > 0 then
+            row = writeParagraph(win, row, "Detected modems:", STYLE.label_fg)
+            row = row + 1
+            for _, name in ipairs(modems) do
+                row = writeParagraph(win, row, "- " .. describeModem(name), STYLE.hint_fg)
+            end
+            row = row + 1
+        else
+            row = writeParagraph(win, row, "No modems detected. You can still enter a side/name manually.", STYLE.warn_fg)
+            row = row + 1
+        end
+
+        if #wireless > 1 then
+            row = writeParagraph(win, row, "Multiple wireless-class modems were detected. Pick the ender modem explicitly.", STYLE.warn_fg)
+            row = row + 1
+        elseif #wireless == 0 then
+            row = writeParagraph(win, row, "No wireless-class modem was detected automatically. Enter the ender modem side/name manually.", STYLE.warn_fg)
+            row = row + 1
+        end
+
+        drawHint("Choose the ender modem side, not a wired modem.")
+        drawNav(true, "Next", STYLE.next_bg)
+
+        local modem_side = trim(inputField(win, row, "Ender modem side/name", defaultModem))
+        if modem_side == "" then
+            alert("Modem Selection", "Ender modem side/name cannot be empty on multi-modem systems.")
+        else
+            cfg.modem_side = modem_side
             return "forward"
         end
     end
@@ -955,7 +1010,7 @@ local function pageConfirm(cfg)
     return waitNav(true, "Install", STYLE.install_bg)
 end
 
-local function buildPages(role, state)
+local function buildPages(cfg, state)
     local pages = {
         function(cfg)
             return pageWelcome(cfg, state)
@@ -967,13 +1022,24 @@ local function buildPages(role, state)
         end
     end
     pages[#pages + 1] = pageRole
-    if role then
+    if cfg.role then
+        local autoModemSide = resolveAutoModemSide(cfg)
         pages[#pages + 1] = pagePeripherals
         pages[#pages + 1] = pageIdentity
-        if role == "controller" or role == "display" then
+        if autoModemSide then
+            pages[#pages + 1] = function(cfg)
+                if type(cfg.modem_side) ~= "string" or cfg.modem_side == "" then
+                    cfg.modem_side = autoModemSide
+                end
+                return "forward"
+            end
+        else
+            pages[#pages + 1] = pageModem
+        end
+        if cfg.role == "controller" or cfg.role == "display" then
             pages[#pages + 1] = pageHardware
         end
-        if role == "controller" then
+        if cfg.role == "controller" then
             pages[#pages + 1] = pageAutoControl
             pages[#pages + 1] = pageUpdateChecks
         end
@@ -992,7 +1058,7 @@ local function runWizard(existingCfg, existingErr)
     local idx = 1
 
     while true do
-        local pages = buildPages(cfg.role, state)
+        local pages = buildPages(cfg, state)
         if idx > #pages then
             return cfg
         end
@@ -1290,4 +1356,6 @@ cls()
 if rebootNow then
     os.reboot()
 end
+
+
 

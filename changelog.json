@@ -201,6 +201,16 @@
       "notes": [
         "Add explicit modem selection for multi-modem nodes"
       ]
+    },
+    {
+      "version": "0.3.9",
+      "manifest_revision": 4,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Auto-select the single ender modem during setup and install",
+        "Hide modem selection in the config editor when detection is unambiguous"
+      ]
     }
   ]
 }

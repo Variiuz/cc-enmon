@@ -126,6 +126,38 @@ local function pickSpeakerSide()
     return nil
 end
 
+local function pickModemSide()
+    local wireless = pmgr.listWirelessModems()
+    local found = pmgr.listModems()
+    if #wireless == 1 then
+        term.setTextColor(colors.green)
+        print("  Auto-selected ender modem: " .. pmgr.describeModem(wireless[1]))
+        term.setTextColor(colors.white)
+        return wireless[1]
+    end
+
+    if #found == 0 then
+        term.setTextColor(colors.red)
+        print("  WARNING: No modem detected. Make sure the ender modem is attached.")
+        term.setTextColor(colors.white)
+        return prompt("Ender modem side/name", "top")
+    end
+
+    term.setTextColor(colors.green)
+    print("  Detected modems:")
+    for _, name in ipairs(found) do
+        print("    - " .. pmgr.describeModem(name))
+    end
+    term.setTextColor(colors.white)
+    if #wireless > 1 then
+        print("  Multiple wireless-class modems were found. Choose the ender modem side ENMON should use.")
+        return prompt("Ender modem side/name", wireless[1])
+    end
+
+    print("  No wireless-class modem was detected automatically. Enter the ender modem side/name manually.")
+    return prompt("Ender modem side/name", found[1])
+end
+
 -- Check that the peripherals required for a given role are present.
 -- Prints warnings but does not block — lets the user proceed and fix later.
 local ROLE_REQUIREMENTS = {
@@ -228,18 +260,8 @@ function setup.run()
     config.set("channel", channel)
 
     print()
-    local modem_default = ""
-    for _, name in ipairs(peripheral.getNames()) do
-        local ptype = peripheral.getType(name)
-        if ptype == "ender_modem" or ptype == "modem" then
-            modem_default = name
-            break
-        end
-    end
-    local modem_side = prompt("Modem side/name (blank = auto)", modem_default)
-    if trim(modem_side) ~= "" then
-        config.set("modem_side", modem_side)
-    end
+    local modem_side = pickModemSide()
+    config.set("modem_side", modem_side)
 
     if role ~= "controller" then
         print()

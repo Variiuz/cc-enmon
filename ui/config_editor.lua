@@ -4,6 +4,7 @@
 
 local basalt = require("lib/basalt")
 local config = require("lib/config")
+local pmgr = require("lib/peripheral_mgr")
 local version = require("lib/version")
 
 local editor = {}
@@ -124,6 +125,22 @@ local function normalizePercent(raw)
     return true, value
 end
 
+local function detectSingleValidModem(savedSide)
+    if type(savedSide) == "string" and savedSide ~= "" then
+        local peripheralRef = pmgr.wrap(savedSide)
+        if peripheralRef and pmgr.isWireless(peripheralRef) == true then
+            return savedSide, true
+        end
+    end
+
+    local wireless = pmgr.listWirelessModems()
+    if #wireless == 1 then
+        return wireless[1], true
+    end
+
+    return savedSide, false
+end
+
 local function safeSet(element, key, value)
     if element == nil then return end
     if type(element.set) == "function" then
@@ -149,12 +166,14 @@ function editor.run(cfg)
     local dirty = false
     local currentVersion = version.getVersion()
     local currentSchemaVersion = config.getCurrentVersion()
+    local resolvedModemSide, modemSideLocked = detectSingleValidModem(cfg.modem_side)
+    local modemAutoChanged = resolvedModemSide ~= cfg.modem_side and resolvedModemSide ~= nil
 
     local edits = {
         role = cfg.role,
         node_id = cfg.node_id,
         channel = cfg.channel or 42,
-        modem_side = cfg.modem_side,
+        modem_side = resolvedModemSide,
         controller_id = cfg.controller_id,
         monitor_side = cfg.monitor_side,
         speaker_side = cfg.speaker_side,
@@ -167,6 +186,7 @@ function editor.run(cfg)
     if edits.threshold_low == nil then edits.threshold_low = 0.25 end
     if edits.threshold_high == nil then edits.threshold_high = 0.90 end
     if edits.update_check_interval == nil then edits.update_check_interval = 90 end
+    if modemAutoChanged then dirty = true end
 
     local field_errors = {}
     local panels = {}
@@ -269,17 +289,17 @@ function editor.run(cfg)
     local function refreshSummary()
         local values = {
             config_version = "v" .. tostring(cfg.config_version or currentSchemaVersion),
-            role = ROLE_LABELS[cfg.role] or tostring(cfg.role),
-            node_id = cfg.node_id or "--",
-            channel = tostring(cfg.channel or "--"),
-            modem_side = cfg.modem_side or "auto",
+            role = ROLE_LABELS[edits.role] or tostring(edits.role),
+            node_id = edits.node_id or "--",
+            channel = tostring(edits.channel or "--"),
+            modem_side = edits.modem_side or "auto",
             controller_id = cfg.controller_id and ("Adopted to " .. tostring(cfg.controller_id)) or "Unlinked",
-            monitor_side = cfg.monitor_side or "--",
-            speaker_side = cfg.speaker_side or "none",
-            auto_ctrl = boolStr(cfg.auto_ctrl),
-            threshold_low = pctStr(cfg.threshold_low),
-            threshold_high = pctStr(cfg.threshold_high),
-            update_check_interval = tostring(cfg.update_check_interval or 90) .. "s",
+            monitor_side = edits.monitor_side or "--",
+            speaker_side = edits.speaker_side or "none",
+            auto_ctrl = boolStr(edits.auto_ctrl),
+            threshold_low = pctStr(edits.threshold_low),
+            threshold_high = pctStr(edits.threshold_high),
+            update_check_interval = tostring(edits.update_check_interval or 90) .. "s",
         }
         for key, ref in pairs(summary_refs) do
             local text = values[key] or "--"
@@ -304,6 +324,7 @@ function editor.run(cfg)
                 edits[key] = value
                 field_errors[key] = nil
                 setStatus(label .. " updated", COLORS.hint_fg)
+                refreshSummary()
             else
                 field_errors[key] = label .. ": " .. tostring(err)
                 setStatus(field_errors[key], COLORS.err_fg)
@@ -361,9 +382,15 @@ function editor.run(cfg)
         row = registerInput(panels.network, row, "Channel (1-65535)", "channel", edits.channel, function(raw)
             return normalizeNumber(raw, false, 1, 65535)
         end)
-        row = registerInput(panels.network, row, "Modem side/name [blank=auto]", "modem_side", edits.modem_side, function(raw)
-            return normalizeText(raw, true)
-        end)
+        if modemSideLocked then
+            row = addNote(panels.network, row, "Ender modem auto-selected: " .. tostring(edits.modem_side or "--"), COLORS.ok_fg)
+            row = addNote(panels.network, row, "Only one valid wireless-class modem is attached, so manual modem selection is hidden.", COLORS.hint_fg)
+            row = row + 1
+        else
+            row = registerInput(panels.network, row, "Modem side/name [blank=auto]", "modem_side", edits.modem_side, function(raw)
+                return normalizeText(raw, true)
+            end)
+        end
         if cfg.role ~= "controller" then
             addNote(panels.network, row, "Current link: " .. (edits.controller_id and ("Controller " .. tostring(edits.controller_id)) or "Unlinked"), COLORS.value_fg)
         end
@@ -408,6 +435,7 @@ function editor.run(cfg)
                 edits.auto_ctrl = self:get("checked") == true
                 field_errors.auto_ctrl = nil
                 setStatus("Auto control updated", COLORS.hint_fg)
+                refreshSummary()
             end)
             row = row + 4
             row = registerInput(panels.control, row, "Start reactors below (% or 0-1)", "threshold_low", math.floor((edits.threshold_low or 0.25) * 100 + 0.5), normalizePercent)
@@ -523,6 +551,9 @@ function editor.run(cfg)
 
     refreshSummary()
     showPanel("summary")
+    if modemAutoChanged then
+        setStatus("Ender modem auto-filled. Save to persist the detected modem side.", COLORS.warn_fg)
+    end
     runBasaltLoop()
 
     return action

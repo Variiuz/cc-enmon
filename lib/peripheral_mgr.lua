@@ -21,11 +21,53 @@ function mgr.wrap(name)
     return nil
 end
 
+function mgr.listModems()
+    local found = {}
+    for _, name in ipairs(peripheral.getNames()) do
+        local ptype = peripheral.getType(name)
+        if ptype == "ender_modem" or ptype == "modem" then
+            found[#found + 1] = name
+        end
+    end
+    return found
+end
+
+function mgr.listWirelessModems()
+    local found = {}
+    for _, name in ipairs(mgr.listModems()) do
+        local peripheralRef = mgr.wrap(name)
+        if mgr.isWireless(peripheralRef) == true then
+            found[#found + 1] = name
+        end
+    end
+    return found
+end
+
 function mgr.findPreferred(name, preferredType, fallbackType)
     if type(name) == "string" and name ~= "" then
         local peripheralRef = mgr.wrap(name)
         if peripheralRef then
+            if preferredType == "ender_modem" then
+                if mgr.isWireless(peripheralRef) == true then
+                    return peripheralRef
+                end
+            else
+                return peripheralRef
+            end
+        end
+    end
+
+    if type(name) == "string" and name ~= "" and preferredType ~= "ender_modem" then
+        local peripheralRef = mgr.wrap(name)
+        if peripheralRef then
             return peripheralRef
+        end
+    end
+
+    if preferredType == "ender_modem" then
+        local wireless = mgr.listWirelessModems()
+        if #wireless > 0 then
+            return mgr.wrap(wireless[1])
         end
     end
 
@@ -39,6 +81,35 @@ function mgr.findPreferred(name, preferredType, fallbackType)
     end
 
     return nil
+end
+
+function mgr.isWireless(peripheralRef)
+    if not peripheralRef or type(peripheralRef.isWireless) ~= "function" then
+        return nil
+    end
+
+    local ok, result = pcall(peripheralRef.isWireless, peripheralRef)
+    if ok then return result == true end
+
+    ok, result = pcall(peripheralRef.isWireless)
+    if ok then return result == true end
+    return nil
+end
+
+function mgr.describeModem(name)
+    local peripheralRef = mgr.wrap(name)
+    if not peripheralRef then
+        return tostring(name) .. " (missing)"
+    end
+
+    local wireless = mgr.isWireless(peripheralRef)
+    if wireless == true then
+        return tostring(name) .. " (ender modem)"
+    elseif wireless == false then
+        return tostring(name) .. " (wired)"
+    end
+
+    return tostring(name) .. " (modem)"
 end
 
 -- Find a peripheral by type, blocking until it appears or timeout (seconds) expires.
