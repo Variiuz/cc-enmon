@@ -943,7 +943,7 @@ local function makeInstallLogger()
     end
 
     local function pumpInput()
-        local timer = os.startTimer(0)
+        local timer = os.startTimer(0.05)
         while true do
             local event, a, b, c = os.pullEvent()
             if event == "timer" and a == timer then

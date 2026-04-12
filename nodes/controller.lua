@@ -1026,7 +1026,7 @@ end
 function controller.run(cfg)
     active_cfg = cfg
     runtime_ui = runtime_panel.new("Controller")
-    runtime_ui.setHint("F4 toggle monitor view  F5 check  F6 offer  F7 start  F8 abort  F9 self-update")
+    runtime_ui.setHint("F3 logs  F4 monitor view  F5 check  F6 offer  F7 start  F8 abort  F9 self-update")
     logLine("[ctrl] Starting controller: " .. cfg.get("node_id"), colors.lime)
 
     -- Open network
@@ -1106,7 +1106,8 @@ function controller.run(cfg)
     local function key_loop()
         while true do
             local _, key = os.pullEvent("key")
-            if key == keys.f4 then
+            if runtime_ui and runtime_ui.handleKey(key) then
+            elseif key == keys.f4 then
                 hud.toggleView()
             elseif key == keys.f5 then
                 performUpdateCheck(cfg)
@@ -1122,13 +1123,22 @@ function controller.run(cfg)
         end
     end
 
+    local function mouse_loop()
+        while true do
+            local _, direction = os.pullEvent("mouse_scroll")
+            if runtime_ui then
+                runtime_ui.handleMouseScroll(direction)
+            end
+        end
+    end
+
     -- Basalt's run() drives its own event loop. We interleave it with our
     -- network/timer loops via parallel.
     local function hud_loop()
         hud.run()
     end
 
-    parallel.waitForAll(net_loop, timer_loop, hud_loop, key_loop)
+    parallel.waitForAll(net_loop, timer_loop, hud_loop, key_loop, mouse_loop)
 end
 
 return controller

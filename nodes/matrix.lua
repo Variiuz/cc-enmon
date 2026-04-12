@@ -114,7 +114,7 @@ end
 
 function matrix.run(cfg)
     runtime_ui = runtime_panel.new("Matrix Node")
-    runtime_ui.setHint("This terminal shows runtime status; the matrix data is sent over network")
+    runtime_ui.setHint("F3 logs. This terminal shows runtime status; matrix data is sent over network")
     logLine("[matrix] Starting matrix node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
@@ -175,7 +175,14 @@ function matrix.run(cfg)
         end
     end
 
-    parallel.waitForAll(poll_loop, command_loop)
+    local function key_loop()
+        while true do
+            local _, key = os.pullEvent("key")
+            runtime_ui.handleKey(key)
+        end
+    end
+
+    parallel.waitForAll(poll_loop, command_loop, key_loop)
 end
 
 return matrix

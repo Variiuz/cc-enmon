@@ -28,7 +28,7 @@ function display.run(cfg)
         })
     end
 
-    runtime_ui.setHint("Monitor HUD runs on the attached monitor; this terminal shows node status")
+    runtime_ui.setHint("F3 logs. Monitor HUD runs on the attached monitor; this terminal shows node status")
     logLine("[display] Starting display node: " .. cfg.get("node_id"), colors.lime)
     updatePanel("Booting", "Opening network", colors.black)
 
@@ -69,7 +69,14 @@ function display.run(cfg)
         end
     end
 
-    parallel.waitForAll(net_loop, hud_loop, hello_loop)
+    local function key_loop()
+        while true do
+            local _, key = os.pullEvent("key")
+            runtime_ui.handleKey(key)
+        end
+    end
+
+    parallel.waitForAll(net_loop, hud_loop, hello_loop, key_loop)
 end
 
 return display

@@ -103,7 +103,7 @@ end
 
 function reactor.run(cfg)
     runtime_ui = runtime_panel.new("Reactor Node")
-    runtime_ui.setHint("This node reports reactor state and listens for controller commands")
+    runtime_ui.setHint("F3 logs. This node reports reactor state and listens for controller commands")
     logLine("[reactor] Starting reactor node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
@@ -176,9 +176,16 @@ function reactor.run(cfg)
         end
     end
 
+    local function key_loop()
+        while true do
+            local _, key = os.pullEvent("key")
+            runtime_ui.handleKey(key)
+        end
+    end
+
     -- parallel.waitForAll keeps all three coroutines running; if one errors
     -- the others terminate, and the error propagates up to enmon.lua's pcall.
-    parallel.waitForAll(timer_loop, poll_loop, cmd_loop)
+    parallel.waitForAll(timer_loop, poll_loop, cmd_loop, key_loop)
 end
 
 return reactor
