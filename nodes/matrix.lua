@@ -36,6 +36,7 @@ local function updatePanel(cfg, status, detail, color)
         { "Version", tostring(version.getVersion()) },
         { "Branch", tostring(BRANCH) },
         { "Channel", tostring(cfg.get("channel")) },
+        { "Modem", tostring(cfg.get("modem_side") or "auto") },
         { "Computer", tostring(os.getComputerID()) },
         { "Status", status or "Idle", color or colors.black, colors.white },
         { "Detail", detail or "--" },
@@ -80,17 +81,12 @@ local function waitForPort()
     end
 end
 
-local function findModem()
-    local m = pmgr.find(MODEM_TYPE)
-    if not m then
-        -- Fallback: any wireless modem
-        m = pmgr.find("modem")
-    end
-    return m
+local function findModem(cfg)
+    return pmgr.findPreferred(cfg.get("modem_side"), MODEM_TYPE, "modem")
 end
 
 local function openNet(cfg)
-    local modem = findModem()
+    local modem = findModem(cfg)
     if not modem then
         error("No ender modem found. Attach one and reboot.")
     end

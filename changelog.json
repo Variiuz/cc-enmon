@@ -192,6 +192,15 @@
       "notes": [
         "Use real local wall-clock timestamps in HUDs"
       ]
+    },
+    {
+      "version": "0.3.9",
+      "manifest_revision": 3,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add explicit modem selection for multi-modem nodes"
+      ]
     }
   ]
 }

@@ -8,7 +8,7 @@ local SOURCE_PATH = "enmon-source.json"
 local RAW_ROOT = "https://raw.githubusercontent.com/Variiuz/cc-enmon/"
 local FALLBACK = {
     version = "0.3.9",
-    manifest_revision = 2,
+    manifest_revision = 3,
     base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/",
     rollout_policy = "controller-first",
 }

@@ -29,6 +29,7 @@ function display.run(cfg)
             { "Version", tostring(version.getVersion()) },
             { "Branch", tostring(BRANCH) },
             { "Channel", tostring(cfg.get("channel")) },
+            { "Modem", tostring(cfg.get("modem_side") or "auto") },
             { "Monitor", tostring(cfg.get("monitor_side")) },
             { "Status", status, color or colors.black, colors.white },
             { "Detail", detail or "--" },
@@ -39,7 +40,7 @@ function display.run(cfg)
     logLine("[display] Starting display node: " .. cfg.get("node_id"), colors.lime)
     updatePanel("Booting", "Opening network", colors.black)
 
-    local modem = pmgr.find(MODEM_TYPE) or pmgr.find("modem")
+    local modem = pmgr.findPreferred(cfg.get("modem_side"), MODEM_TYPE, "modem")
     if not modem then error("No ender modem found.") end
     controller_link.openNodeNetwork(cfg, modem)
 

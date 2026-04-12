@@ -4,6 +4,7 @@
 --   role         string  "controller" | "matrix" | "reactor" | "display" | "pocket"
 --   node_id      string  unique identifier for this node (e.g. "matrix_1")
 --   channel      number  ender modem channel (default 42)
+--   modem_side   string  side/name of modem peripheral to bind for ENMON traffic
 --   controller_id number  computer ID of the adopted controller (non-controller nodes)
 --   controller_token string per-node operational auth token issued on adoption
 --   monitor_side string  side/name of monitor peripheral (controller + display)
@@ -15,12 +16,13 @@
 --   update_check_interval number seconds between controller manifest checks (default 90)
 
 local CONFIG_PATH = "enmon.cfg"
-local CONFIG_VERSION = 4
+local CONFIG_VERSION = 5
 
 local DEFAULTS = {
     role           = nil,
     node_id        = nil,
     channel        = 42,
+    modem_side     = nil,
     controller_id  = nil,
     controller_token = nil,
     monitor_side   = nil,
@@ -123,6 +125,7 @@ local function normalizeData(input)
 
     raw.role = normalizeText(raw.role, nil, false)
     raw.node_id = normalizeText(raw.node_id, nil, false)
+    raw.modem_side = normalizeText(raw.modem_side, nil, true)
     raw.controller_token = normalizeText(raw.controller_token, nil, true)
     raw.monitor_side = normalizeText(raw.monitor_side, nil, true)
     raw.speaker_side = normalizeText(raw.speaker_side, nil, true)

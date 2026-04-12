@@ -21,6 +21,26 @@ function mgr.wrap(name)
     return nil
 end
 
+function mgr.findPreferred(name, preferredType, fallbackType)
+    if type(name) == "string" and name ~= "" then
+        local peripheralRef = mgr.wrap(name)
+        if peripheralRef then
+            return peripheralRef
+        end
+    end
+
+    if preferredType then
+        local peripheralRef = mgr.find(preferredType)
+        if peripheralRef then return peripheralRef end
+    end
+
+    if fallbackType then
+        return mgr.find(fallbackType)
+    end
+
+    return nil
+end
+
 -- Find a peripheral by type, blocking until it appears or timeout (seconds) expires.
 -- Pass timeout = nil to wait indefinitely.
 -- Prints a waiting message while polling.

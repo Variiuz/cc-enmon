@@ -27,7 +27,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.3.9", 2)
+local VERSION    = composeReleaseLabel("0.3.9", 3)
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -550,6 +550,7 @@ local function normalizeSeedConfig(source)
         cfg.role = nil
     end
     if cfg.channel ~= nil then cfg.channel = tonumber(cfg.channel) or 42 end
+    if cfg.modem_side ~= nil then cfg.modem_side = trim(cfg.modem_side) end
     if cfg.controller_id ~= nil then cfg.controller_id = tonumber(cfg.controller_id) end
     if cfg.threshold_low ~= nil then
         cfg.threshold_low = tonumber(cfg.threshold_low)
@@ -590,6 +591,17 @@ local function listPeripheralsOfType(ptype)
     local found = {}
     for _, name in ipairs(peripheral.getNames()) do
         if peripheral.getType(name) == ptype then
+            found[#found + 1] = name
+        end
+    end
+    return found
+end
+
+local function listModems()
+    local found = {}
+    for _, name in ipairs(peripheral.getNames()) do
+        local ptype = peripheral.getType(name)
+        if ptype == "ender_modem" or ptype == "modem" then
             found[#found + 1] = name
         end
     end
@@ -736,9 +748,15 @@ local function pageIdentity(cfg)
         local row = 1
         local defaultNode = cfg.node_id or (cfg.role .. "_" .. tostring(os.getComputerID()))
         local defaultChannel = cfg.channel or 42
+        local modems = listModems()
+        local defaultModem = cfg.modem_side or modems[1] or ""
 
-        row = writeParagraph(win, row, "Set this node's name and channel. New non-controller nodes will appear as unlinked on that channel until a controller adopts them.", STYLE.root_fg)
+        row = writeParagraph(win, row, "Set this node's name, channel, and which modem ENMON should use. New non-controller nodes will appear as unlinked on that channel until a controller adopts them.", STYLE.root_fg)
         row = row + 1
+        if #modems > 0 then
+            row = writeParagraph(win, row, "Detected modems: " .. table.concat(modems, ", "), STYLE.hint_fg)
+            row = row + 1
+        end
 
         drawHint("Leave a box blank to keep its default value.")
         drawNav(true, "Next", STYLE.next_bg)
@@ -746,6 +764,8 @@ local function pageIdentity(cfg)
         local node_id = trim(inputField(win, row, "Node ID", defaultNode))
         row = row + 3
         local channel = trim(inputField(win, row, "Network channel", defaultChannel, "[1-65535]"))
+        row = row + 3
+        local modem_side = trim(inputField(win, row, "Modem side/name", defaultModem, "[blank = auto]"))
 
         local channelNumber = tonumber(channel)
         if node_id == "" then
@@ -755,6 +775,7 @@ local function pageIdentity(cfg)
         else
             cfg.node_id = node_id
             cfg.channel = channelNumber
+            cfg.modem_side = modem_side ~= "" and modem_side or nil
             return "forward"
         end
     end
@@ -896,6 +917,7 @@ local function summaryRows(cfg)
         { "Role", ROLE_LABELS[cfg.role] or cfg.role },
         { "Node ID", cfg.node_id },
         { "Channel", tostring(cfg.channel) },
+        { "Modem", tostring(cfg.modem_side or "auto") },
     }
     if cfg.role ~= "controller" then
         rows[#rows + 1] = { "Linking", "Adopt into a controller after install" }

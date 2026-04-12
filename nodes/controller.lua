@@ -673,6 +673,7 @@ refreshPanel = function(cfg)
         { "Computer ID", tostring(os.getComputerID()), colors.white, colors.blue },
         { "Node", tostring(cfg.get("node_id")) },
         { "Branch", tostring(BRANCH) },
+        { "Modem", tostring(cfg.get("modem_side") or "auto") },
         { "Updates", updates_line },
         { "Channel", tostring(cfg.get("channel")) },
         { "Matrix", matrix_status, matrix_fg, matrix_bg },
@@ -1337,7 +1338,7 @@ function controller.run(cfg)
     logLine("[ctrl] Starting controller: " .. cfg.get("node_id"), colors.lime)
 
     -- Open network
-    local modem = pmgr.find(MODEM_TYPE) or pmgr.find("modem")
+    local modem = pmgr.findPreferred(cfg.get("modem_side"), MODEM_TYPE, "modem")
     if not modem then error("No ender modem found.") end
     controller_link.openControllerNetwork(cfg, modem)
 

@@ -21,7 +21,7 @@ function pocket.run(cfg)
     local claim_code = controller_link.newClaimCode()
     print("[pocket] Starting pocket node: " .. cfg.get("node_id"))
 
-    local modem = pmgr.find(MODEM_TYPE) or pmgr.find("modem")
+    local modem = pmgr.findPreferred(cfg.get("modem_side"), MODEM_TYPE, "modem")
     if not modem then error("No ender modem found.") end
     controller_link.openNodeNetwork(cfg, modem)
 

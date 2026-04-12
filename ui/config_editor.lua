@@ -154,6 +154,7 @@ function editor.run(cfg)
         role = cfg.role,
         node_id = cfg.node_id,
         channel = cfg.channel or 42,
+        modem_side = cfg.modem_side,
         controller_id = cfg.controller_id,
         monitor_side = cfg.monitor_side,
         speaker_side = cfg.speaker_side,
@@ -271,6 +272,7 @@ function editor.run(cfg)
             role = ROLE_LABELS[cfg.role] or tostring(cfg.role),
             node_id = cfg.node_id or "--",
             channel = tostring(cfg.channel or "--"),
+            modem_side = cfg.modem_side or "auto",
             controller_id = cfg.controller_id and ("Adopted to " .. tostring(cfg.controller_id)) or "Unlinked",
             monitor_side = cfg.monitor_side or "--",
             speaker_side = cfg.speaker_side or "none",
@@ -332,6 +334,7 @@ function editor.run(cfg)
         row = addSummaryRow(panels.summary, row, "Role", "role")
         row = addSummaryRow(panels.summary, row, "Node ID", "node_id")
         row = addSummaryRow(panels.summary, row, "Channel", "channel")
+        row = addSummaryRow(panels.summary, row, "Modem", "modem_side")
         if cfg.role ~= "controller" then
             row = addSummaryRow(panels.summary, row, "Controller", "controller_id", nil, COLORS.warn_fg)
         end
@@ -357,6 +360,9 @@ function editor.run(cfg)
         end)
         row = registerInput(panels.network, row, "Channel (1-65535)", "channel", edits.channel, function(raw)
             return normalizeNumber(raw, false, 1, 65535)
+        end)
+        row = registerInput(panels.network, row, "Modem side/name [blank=auto]", "modem_side", edits.modem_side, function(raw)
+            return normalizeText(raw, true)
         end)
         if cfg.role ~= "controller" then
             addNote(panels.network, row, "Current link: " .. (edits.controller_id and ("Controller " .. tostring(edits.controller_id)) or "Unlinked"), COLORS.value_fg)
@@ -473,6 +479,7 @@ function editor.run(cfg)
 
         cfg.node_id = edits.node_id
         cfg.channel = edits.channel
+        cfg.modem_side = edits.modem_side
         cfg.controller_id = edits.controller_id
         cfg.monitor_side = edits.monitor_side
         cfg.speaker_side = edits.speaker_side

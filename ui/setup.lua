@@ -227,6 +227,20 @@ function setup.run()
     local channel = promptNumber("Network channel", 42, 1, 65535)
     config.set("channel", channel)
 
+    print()
+    local modem_default = ""
+    for _, name in ipairs(peripheral.getNames()) do
+        local ptype = peripheral.getType(name)
+        if ptype == "ender_modem" or ptype == "modem" then
+            modem_default = name
+            break
+        end
+    end
+    local modem_side = prompt("Modem side/name (blank = auto)", modem_default)
+    if trim(modem_side) ~= "" then
+        config.set("modem_side", modem_side)
+    end
+
     if role ~= "controller" then
         print()
         term.setTextColor(colors.yellow)
