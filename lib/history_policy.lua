@@ -22,11 +22,20 @@ function history_policy.promptForDiskPersistence(side)
     print("N = keep memory-only mode")
 
     while true do
-        local _, key = os.pullEvent("key")
-        if key == keys.y then
-            return "disk_enabled"
-        elseif key == keys.n then
-            return "memory_only"
+        local event, value = os.pullEvent()
+        if event == "char" then
+            local choice = string.lower(tostring(value or ""))
+            if choice == "y" then
+                return "disk_enabled"
+            elseif choice == "n" then
+                return "memory_only"
+            end
+        elseif event == "key" then
+            if value == keys.y then
+                return "disk_enabled"
+            elseif value == keys.n then
+                return "memory_only"
+            end
         end
     end
 end

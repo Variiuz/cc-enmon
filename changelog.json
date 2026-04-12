@@ -292,6 +292,15 @@
         "Wrap runtime activity log messages instead of truncating them to a single row",
         "Align tools/bump-version.ps1 hash normalization with the updater so future manifests match runtime verification"
       ]
+    },
+    {
+      "version": "0.4.0",
+      "manifest_revision": 2,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Fix the controller disk-persistence Y/N prompt so typed answers are accepted reliably after update and reboot"
+      ]
     }
   ]
 }
