@@ -134,7 +134,7 @@ function updater.collectFiles(manifest, role)
     return uniquePaths(files)
 end
 
-function updater.checkForUpdate(role, base_url)
+function updater.checkForUpdate(role, base_url, force)
     local manifest, err = updater.fetchRemoteManifest(base_url)
     if not manifest then return nil, err end
 
@@ -143,7 +143,8 @@ function updater.checkForUpdate(role, base_url)
         role = role,
         current_version = current,
         latest_version = manifest.version or current,
-        needs_update = version.isNewer(manifest.version, current),
+        needs_update = force == true or version.isNewer(manifest.version, current),
+        force = force == true,
         manifest = manifest,
     }
 end
@@ -219,11 +220,12 @@ end
 function updater.applyLocalUpdate(options)
     options = options or {}
     local role = options.role
+    local force = options.force == true
     if not role or role == "" then
         return false, "role is required for update"
     end
 
-    local info, err = updater.checkForUpdate(role, options.base_url)
+    local info, err = updater.checkForUpdate(role, options.base_url, force)
     if not info then return false, err end
     if not info.needs_update then
         return true, {
@@ -231,6 +233,7 @@ function updater.applyLocalUpdate(options)
             role = role,
             current_version = info.current_version,
             latest_version = info.latest_version,
+            forced = false,
         }
     end
 
@@ -261,6 +264,7 @@ function updater.applyLocalUpdate(options)
         role = role,
         from_version = info.current_version,
         to_version = info.latest_version,
+        forced = force,
     }
 end
 

@@ -431,7 +431,7 @@ renderUpdates = function(data)
     e.summary:setText(truncate(
         "Controller " .. tostring(snapshot.controller_version or "--") ..
         "  Latest " .. tostring(snapshot.latest_version or "--") ..
-        "  Phase " .. tostring(snapshot.phase or "idle"),
+        "  Phase " .. tostring(snapshot.phase or "idle") .. (snapshot.force_mode and "  FORCE" or ""),
         _monitor_w
     ))
 
@@ -455,11 +455,11 @@ renderUpdates = function(data)
     else
         e.selected:setText(truncate("Selected: ALL eligible nodes", math.max(1, _monitor_w - 14)))
         if snapshot.offer then
-            e.detail:setText(truncate("Offer ready for " .. tostring(snapshot.offer.target_count) .. " live node(s), " .. tostring(snapshot.offer.pending_count) .. " pending offline", _monitor_w))
+            e.detail:setText(truncate("Offer ready for " .. tostring(snapshot.offer.target_count) .. " live node(s), " .. tostring(snapshot.offer.pending_count) .. " pending offline" .. (snapshot.offer.force and " [force]" or ""), _monitor_w))
         elseif snapshot.rollout then
             e.detail:setText(truncate("Rollout current: " .. tostring(snapshot.rollout.current or "--") .. "  queued: " .. tostring(snapshot.rollout.queued or 0), _monitor_w))
         else
-            e.detail:setText(truncate("Check, offer, start, abort, or adopt a selected replacement.", _monitor_w))
+            e.detail:setText(truncate(snapshot.force_mode and "Force mode on: next check/offer/start/self-update will reinstall." or "Check, offer, start, abort, or adopt a selected replacement.", _monitor_w))
         end
     end
 

@@ -53,7 +53,8 @@ function service.handleMessage(cfg, msg, logger)
 
     if msg.type == net.MSG.UPDATE_CHECK then
         local desired = msg.payload and msg.payload.desired_version or nil
-        local needsUpdate = type(desired) == "string" and version.isNewer(desired, currentVersion) or false
+        local forceUpdate = msg.payload and msg.payload.force == true or false
+        local needsUpdate = forceUpdate or (type(desired) == "string" and version.isNewer(desired, currentVersion) or false)
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "check",
             status = "ready",
@@ -61,6 +62,7 @@ function service.handleMessage(cfg, msg, logger)
             local_version = currentVersion,
             desired_version = desired,
             needs_update = needsUpdate,
+            force = forceUpdate,
         }, msg)
         logLine(logger, "[update] Reported version " .. currentVersion .. " to controller")
         return true
@@ -68,10 +70,12 @@ function service.handleMessage(cfg, msg, logger)
 
     if msg.type == net.MSG.UPDATE_OFFER then
         local desired = msg.payload and msg.payload.desired_version or nil
+        local forceUpdate = msg.payload and msg.payload.force == true or false
         pending_offer = {
             desired_version = desired,
             sender_id = msg.sender_id,
             node_id = msg.node_id,
+            force = forceUpdate,
         }
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "offer",
@@ -79,9 +83,10 @@ function service.handleMessage(cfg, msg, logger)
             role = role,
             local_version = currentVersion,
             desired_version = desired,
-            needs_update = type(desired) == "string" and version.isNewer(desired, currentVersion) or false,
+            needs_update = forceUpdate or (type(desired) == "string" and version.isNewer(desired, currentVersion) or false),
+            force = forceUpdate,
         }, msg)
-        logLine(logger, "[update] Offer received for version " .. tostring(desired))
+        logLine(logger, "[update] Offer received for version " .. tostring(desired) .. (forceUpdate and " (force)" or ""))
         return true
     end
 
@@ -109,13 +114,15 @@ function service.handleMessage(cfg, msg, logger)
     end
 
     local desiredVersion = msg.payload and msg.payload.desired_version or nil
-    if not pending_offer or pending_offer.sender_id ~= msg.sender_id or pending_offer.desired_version ~= desiredVersion then
+    local forceUpdate = msg.payload and msg.payload.force == true or false
+    if not pending_offer or pending_offer.sender_id ~= msg.sender_id or pending_offer.desired_version ~= desiredVersion or pending_offer.force ~= forceUpdate then
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "start",
             status = "rejected-no-offer",
             role = role,
             local_version = currentVersion,
             desired_version = desiredVersion,
+            force = forceUpdate,
         }, msg)
         logLine(logger, "[update] Rejecting start without matching offer")
         return true
@@ -135,11 +142,13 @@ function service.handleMessage(cfg, msg, logger)
         status = "in_progress",
         role = role,
         local_version = currentVersion,
+        force = forceUpdate,
     }, msg)
-    logLine(logger, "[update] Starting self-update")
+    logLine(logger, "[update] Starting self-update" .. (forceUpdate and " (force)" or ""))
 
     local ok, result = updater.applyLocalUpdate({
         role = role,
+        force = forceUpdate,
         logger = function(line)
             logLine(logger, "[update] " .. tostring(line))
         end,
@@ -153,6 +162,7 @@ function service.handleMessage(cfg, msg, logger)
             role = role,
             local_version = currentVersion,
             message = tostring(result),
+            force = forceUpdate,
         }, msg)
         logLine(logger, "[update] Update failed: " .. tostring(result))
         return true
@@ -166,6 +176,7 @@ function service.handleMessage(cfg, msg, logger)
             role = role,
             local_version = result.current_version,
             desired_version = result.latest_version,
+            force = forceUpdate,
         }, msg)
         logLine(logger, "[update] Already on latest version")
         return true
@@ -179,6 +190,7 @@ function service.handleMessage(cfg, msg, logger)
         local_version = result.to_version,
         from_version = result.from_version,
         to_version = result.to_version,
+        force = forceUpdate,
     }, msg)
     logLine(logger, "[update] Update complete: " .. tostring(result.from_version) .. " -> " .. tostring(result.to_version))
 

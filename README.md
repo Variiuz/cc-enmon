@@ -5,7 +5,7 @@ Modular ComputerCraft energy monitoring for **Mekanism Induction Matrix** and **
 ## Install (in-game)
 
 ```
-wget https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/installer.lua installer.lua
+wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua
 installer
 ```
 
@@ -31,6 +31,35 @@ All nodes must share the same **channel** and **shared secret** configured durin
 - HMAC-authenticated messages — foreign packets are silently dropped
 - Responsive UI (adapts to monitor size)
 - Peripheral check during setup wizard
+
+## Hotkeys
+
+### Terminal Hotkeys
+
+All runtime terminals:
+
+- `F3` toggle dedicated log view
+- `Up` / `Down` scroll log view
+- `PageUp` / `PageDown` scroll log view faster
+- `Home` jump to oldest visible log region
+- `End` jump back to live tail
+
+Controller terminal only:
+
+- `F4` toggle attached monitor between Overview and Updates
+- `F5` check for updates
+- `F6` offer updates to eligible remote nodes
+- `F7` start the offered rollout
+- `F8` abort the active offer/rollout
+- `F9` self-update the controller
+- `F10` toggle force-update mode for the next check/offer/start/self-update
+
+## Update Commands
+
+- `enmon update` checks the remote manifest and updates only when the remote version is newer.
+- `enmon update force` re-downloads and reapplies files even when the version number did not change.
+
+Force mode on the controller exists for the same reason: if you changed files without bumping the manifest version, you can still re-offer and reapply the build.
 
 ## Requirements
 

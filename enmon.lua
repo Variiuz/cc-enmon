@@ -21,6 +21,7 @@ local resumed, resumeErr = updater.resumeInterruptedUpdate()
 local runtime_panel = require("ui/runtime_panel")
 
 local VERSION = version.getVersion()
+local forceUpdate = args[1] == "update" and (args[2] == "force" or args[2] == "--force")
 
 local function cls() term.clear(); term.setCursorPos(1, 1) end
 
@@ -78,12 +79,14 @@ if args[1] == "update" then
     boot_ui.setSummary({
         { "Version", VERSION },
         { "Role", tostring(config.get("role")) },
+        { "Mode", forceUpdate and "Force" or "Normal" },
         { "Status", "Checking for updates..." },
     })
-    boot_ui.setHint("Local self-update from manifest")
+    boot_ui.setHint(forceUpdate and "Forced local self-update from manifest" or "Local self-update from manifest")
 
     local ok, result = updater.applyLocalUpdate({
         role = config.get("role"),
+        force = forceUpdate,
         logger = function(message)
             if boot_ui then
                 boot_ui.log(message, colors.lightBlue)

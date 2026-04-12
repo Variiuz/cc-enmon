@@ -47,6 +47,7 @@ local state = {
     updates  = {
         controller_version = version.getVersion(),
         latest_version = nil,
+        force_mode = false,
         nodes = {},
         last_check_id = nil,
         check_deadline = nil,
@@ -240,7 +241,7 @@ local function refreshSelfEntry(cfg, status)
     })
     if entry then
         entry.local_version = state.updates.controller_version
-        entry.needs_update = state.updates.latest_version and version.isNewer(state.updates.latest_version, entry.local_version) or false
+        entry.needs_update = state.updates.force_mode == true or (state.updates.latest_version and version.isNewer(state.updates.latest_version, entry.local_version) or false)
         if not entry.needs_update then
             entry.update_status = "online-current"
         end
@@ -314,10 +315,12 @@ local function buildUpdateSnapshot()
         controller_version = updates.controller_version,
         latest_version = updates.latest_version,
         phase = phase,
+        force_mode = updates.force_mode == true,
         offer = updates.offer and {
             latest_version = updates.offer.latest_version,
             target_count = #updates.offer.queue,
             pending_count = updates.offer.pending_count or 0,
+            force = updates.offer.force == true,
         } or nil,
         rollout = updates.rollout and {
             current = updates.rollout.current and updates.rollout.current.node_id or nil,
@@ -329,7 +332,7 @@ local function buildUpdateSnapshot()
     }
 end
 
-local function collectOfferTargets(cfg, target_node_id)
+local function collectOfferTargets(cfg, target_node_id, force)
     local queue = {}
     local pending = {}
     local foundTarget = target_node_id == nil
@@ -344,7 +347,9 @@ local function collectOfferTargets(cfg, target_node_id)
                     entry.update_status = "identity-conflict"
                 else
                     local needsUpdate = entry.needs_update
-                    if needsUpdate == nil and entry.local_version and state.updates.latest_version then
+                    if force then
+                        needsUpdate = true
+                    elseif needsUpdate == nil and entry.local_version and state.updates.latest_version then
                         needsUpdate = version.isNewer(state.updates.latest_version, entry.local_version)
                     end
                     if needsUpdate then
@@ -611,15 +616,16 @@ local function onUpdateStatus(msg, cfg)
 end
 
 local function createUpdateOffer(cfg, target_node_id)
+    local force = state.updates.force_mode == true
     if state.updates.rollout then
         logLine("[ctrl] Cannot create a new offer while rollout is active", colors.orange)
         return false
     end
-    if not state.updates.latest_version and not performUpdateCheck(cfg) then
+    if not state.updates.latest_version and not performUpdateCheck(cfg, force) then
         return false
     end
 
-    local foundTarget, queue, pending = collectOfferTargets(cfg, target_node_id)
+    local foundTarget, queue, pending = collectOfferTargets(cfg, target_node_id, force)
     if not foundTarget then
         logLine("[ctrl] Selected node not found", colors.orange)
         return false
@@ -636,6 +642,7 @@ local function createUpdateOffer(cfg, target_node_id)
         pending_count = 0,
         msg_ids = {},
         scope = target_node_id,
+        force = force,
     }
 
     for node_id in pairs(pending) do
@@ -647,6 +654,7 @@ local function createUpdateOffer(cfg, target_node_id)
     for _, item in ipairs(queue) do
         local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_OFFER, {
             desired_version = offer.latest_version,
+            force = offer.force,
         }, item.node_id, item.sender_id)
         offer.msg_ids[item.node_id] = msg_id
         local entry = state.updates.nodes[item.node_id]
@@ -671,6 +679,7 @@ local function startUpdateOffer(cfg)
         queued = {},
         pending = offer.pending,
         latest_version = offer.latest_version,
+        force = offer.force == true,
         current = nil,
         waiting_logged = false,
         cancelled = false,
@@ -777,8 +786,9 @@ local function adoptReplacement(cfg, node_id)
     return true
 end
 
-performUpdateCheck = function(cfg)
-    local info, err = updater.checkForUpdate(cfg.get("role"))
+performUpdateCheck = function(cfg, force)
+    local forceUpdate = force == true
+    local info, err = updater.checkForUpdate(cfg.get("role"), nil, forceUpdate)
     if not info then
         logLine("[ctrl] Update check failed: " .. tostring(err), colors.red)
         return false
@@ -794,15 +804,15 @@ performUpdateCheck = function(cfg)
         selfEntry.update_status = info.needs_update and "ready" or "online-current"
     end
 
-    logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ")", colors.lightBlue)
-    local _, _, msg_id = net.send(net.MSG.UPDATE_CHECK, { desired_version = info.latest_version })
+    logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ")" .. (forceUpdate and " [force]" or ""), colors.lightBlue)
+    local _, _, msg_id = net.send(net.MSG.UPDATE_CHECK, { desired_version = info.latest_version, force = forceUpdate })
     state.updates.last_check_id = msg_id
     state.updates.check_deadline = now() + CHECK_TIMEOUT
     for node_id, entry in pairs(state.updates.nodes) do
         if node_id ~= cfg.get("node_id") then
             entry.needs_update = nil
             if not isStale(entry.last_seen or 0) then
-                entry.update_status = "checking"
+                entry.update_status = forceUpdate and "queued" or "checking"
             end
         end
     end
@@ -815,7 +825,7 @@ local function startRollout(cfg)
         logLine("[ctrl] Update rollout already running", colors.orange)
         return
     end
-    if not state.updates.latest_version and not performUpdateCheck(cfg) then
+    if not state.updates.latest_version and not performUpdateCheck(cfg, state.updates.force_mode == true) then
         return
     end
 
@@ -828,7 +838,9 @@ local function startRollout(cfg)
                 entry.update_status = "identity-conflict"
             else
                 local needsUpdate = entry.needs_update
-                if needsUpdate == nil and entry.local_version and state.updates.latest_version then
+                if state.updates.force_mode == true then
+                    needsUpdate = true
+                elseif needsUpdate == nil and entry.local_version and state.updates.latest_version then
                     needsUpdate = version.isNewer(state.updates.latest_version, entry.local_version)
                 end
                 if needsUpdate then
@@ -956,6 +968,7 @@ local function tickRollout(cfg)
     logLine("[ctrl] Starting update on " .. tostring(nextNode.node_id) .. " (" .. tostring(nextNode.role) .. ")", colors.lightBlue)
     local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_START, {
         desired_version = rollout.latest_version,
+        force = rollout.force == true,
     }, nextNode.node_id, nextNode.sender_id)
 
     live.update_status = "starting"
@@ -969,6 +982,7 @@ local function tickRollout(cfg)
 end
 
 local function updateSelf(cfg)
+    local forceUpdate = state.updates.force_mode == true
     if state.updates.rollout then
         logLine("[ctrl] Finish remote rollout before self-update", colors.orange)
         return
@@ -976,6 +990,7 @@ local function updateSelf(cfg)
 
     local ok, result = updater.applyLocalUpdate({
         role = cfg.get("role"),
+        force = forceUpdate,
         logger = function(message)
             logLine("[ctrl-update] " .. tostring(message), colors.lightBlue)
         end,
@@ -990,9 +1005,17 @@ local function updateSelf(cfg)
         return
     end
 
-    logLine("[ctrl] Controller updated to " .. tostring(result.to_version) .. "; rebooting", colors.lime)
+    logLine("[ctrl] Controller updated to " .. tostring(result.to_version) .. (forceUpdate and " via force reinstall" or "") .. "; rebooting", colors.lime)
     os.sleep(0.3)
     os.reboot()
+end
+
+local function toggleForceMode(cfg)
+    state.updates.force_mode = not state.updates.force_mode
+    refreshSelfEntry(cfg, "online")
+    refreshPanel(cfg)
+    hud.update(buildDisplayPayload())
+    logLine("[ctrl] Force update mode " .. (state.updates.force_mode and "enabled" or "disabled"), state.updates.force_mode and colors.orange or colors.lightBlue)
 end
 
 -- ── Manual reactor toggle (called from HUD) ──────────────────────────────────────
@@ -1003,7 +1026,7 @@ function controller.setReactorActive(node_id, active)
 end
 
 function controller.requestUpdateCheck()
-    if active_cfg then performUpdateCheck(active_cfg) end
+    if active_cfg then performUpdateCheck(active_cfg, state.updates.force_mode == true) end
 end
 
 function controller.offerUpdates(node_id)
@@ -1026,7 +1049,7 @@ end
 function controller.run(cfg)
     active_cfg = cfg
     runtime_ui = runtime_panel.new("Controller")
-    runtime_ui.setHint("F3 logs  F4 monitor view  F5 check  F6 offer  F7 start  F8 abort  F9 self-update")
+    runtime_ui.setHint("F3 logs  F4 monitor view  F5 check  F6 offer  F7 start  F8 abort  F9 self-update  F10 force")
     logLine("[ctrl] Starting controller: " .. cfg.get("node_id"), colors.lime)
 
     -- Open network
@@ -1110,7 +1133,7 @@ function controller.run(cfg)
             elseif key == keys.f4 then
                 hud.toggleView()
             elseif key == keys.f5 then
-                performUpdateCheck(cfg)
+                performUpdateCheck(cfg, state.updates.force_mode == true)
             elseif key == keys.f6 then
                 createUpdateOffer(cfg, nil)
             elseif key == keys.f7 then
@@ -1119,6 +1142,8 @@ function controller.run(cfg)
                 abortUpdateFlow(cfg)
             elseif key == keys.f9 then
                 updateSelf(cfg)
+            elseif key == keys.f10 then
+                toggleForceMode(cfg)
             end
         end
     end
