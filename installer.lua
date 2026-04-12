@@ -48,7 +48,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel(readManifestValue("version", "0.3.8"), readManifestNumber("manifest_revision", 2))
+local VERSION    = composeReleaseLabel(readManifestValue("version", "0.3.8"), readManifestNumber("manifest_revision", 3))
 local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -1280,6 +1280,7 @@ else
         shell.run("enmon.lua")
     end
 end
+
 
 
 

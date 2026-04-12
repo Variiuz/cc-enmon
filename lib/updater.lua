@@ -9,6 +9,7 @@ local updater = {}
 local STAGE_DIR = ".enmon_update_stage"
 local SENTINEL_PATH = ".enmon_update_state"
 local MANAGED_STATE_PATH = ".enmon_managed_files"
+local BACKUP_DIR = ".enmon_update_backup"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
 
 local function log(logger, message)
@@ -88,6 +89,24 @@ local function clearPath(path)
     end
 end
 
+local function safeMove(fromPath, toPath)
+    ensureParent(toPath)
+    local ok, err = pcall(fs.move, fromPath, toPath)
+    if not ok then
+        return false, tostring(err)
+    end
+    return true
+end
+
+local function safeCopy(fromPath, toPath)
+    ensureParent(toPath)
+    local ok, err = pcall(fs.copy, fromPath, toPath)
+    if not ok then
+        return false, tostring(err)
+    end
+    return true
+end
+
 local function uniquePaths(entries)
     local seen = {}
     local result = {}
@@ -104,15 +123,15 @@ local function readSentinel()
     if not fs.exists(SENTINEL_PATH) then return nil end
 
     local file = fs.open(SENTINEL_PATH, "r")
-    if not file then return nil end
+    if not file then return nil, "unable to open update state" end
     local raw = file.readAll()
     file.close()
 
     local ok, state = pcall(textutils.unserialize, raw)
     if ok and type(state) == "table" then
-        return state
+        return state, nil
     end
-    return nil
+    return nil, "corrupt update state"
 end
 
 local function writeSentinel(state)
@@ -137,6 +156,26 @@ end
 
 local function writeManagedFiles(paths)
     return writeFile(MANAGED_STATE_PATH, textutils.serialize({ files = paths or {} }))
+end
+
+local function backupPath(root, relPath)
+    return fs.combine(root, relPath)
+end
+
+local function removeLiveWithBackup(root, relPath, logger)
+    if not fs.exists(relPath) then return true end
+
+    local archived = backupPath(root, relPath)
+    if not fs.exists(archived) then
+        log(logger, "Backing up " .. relPath)
+        return safeMove(relPath, archived)
+    end
+
+    local ok, err = pcall(fs.delete, relPath)
+    if not ok then
+        return false, tostring(err)
+    end
+    return true
 end
 
 function updater.fetchRemoteManifest(base_url)
@@ -205,6 +244,7 @@ end
 
 local function stageFiles(entries, logger, force)
     clearPath(STAGE_DIR)
+    clearPath(BACKUP_DIR)
     fs.makeDir(STAGE_DIR)
 
     local stagedPaths = {}
@@ -257,8 +297,15 @@ function updater.finalizeSwap(state, logger)
     if type(state.stage_dir) ~= "string" or type(state.files) ~= "table" or type(state.managed_files) ~= "table" then
         return false, "update state incomplete"
     end
+    state.backup_dir = state.backup_dir or BACKUP_DIR
+    if type(state.backup_dir) ~= "string" then
+        return false, "update backup directory missing"
+    end
     if not fs.exists(state.stage_dir) then
         return false, "staging directory missing"
+    end
+    if not fs.exists(state.backup_dir) then
+        fs.makeDir(state.backup_dir)
     end
 
     for _, relPath in ipairs(state.files) do
@@ -275,32 +322,57 @@ function updater.finalizeSwap(state, logger)
 
     for _, relPath in ipairs(readManagedFiles()) do
         if not desired[relPath] and fs.exists(relPath) then
-            log(logger, "Removing stale " .. relPath)
-            fs.delete(relPath)
+            log(logger, "Archiving stale " .. relPath)
+            local ok, err = removeLiveWithBackup(state.backup_dir, relPath, logger)
+            if not ok then
+                return false, "failed to archive stale file " .. relPath .. ": " .. tostring(err)
+            end
         end
     end
 
     for _, relPath in ipairs(state.files) do
         local stagedPath = fs.combine(state.stage_dir, relPath)
-        log(logger, "Activating " .. relPath)
-        ensureParent(relPath)
-        if fs.exists(relPath) then
-            fs.delete(relPath)
+        local archived = backupPath(state.backup_dir, relPath)
+        if fs.exists(relPath) and not fs.exists(archived) then
+            local ok, err = removeLiveWithBackup(state.backup_dir, relPath, logger)
+            if not ok then
+                return false, "failed to back up live file " .. relPath .. ": " .. tostring(err)
+            end
         end
-        fs.copy(stagedPath, relPath)
+
+        local stagedRaw, stageErr = readLocalFile(stagedPath)
+        if not stagedRaw then
+            return false, "failed to read staged file " .. relPath .. ": " .. tostring(stageErr)
+        end
+
+        local liveRaw = readLocalFile(relPath)
+        if not liveRaw or normalizeText(liveRaw) ~= normalizeText(stagedRaw) then
+            log(logger, "Activating " .. relPath)
+            if fs.exists(relPath) then
+                fs.delete(relPath)
+            end
+            local ok, err = safeCopy(stagedPath, relPath)
+            if not ok then
+                return false, "failed to activate " .. relPath .. ": " .. tostring(err)
+            end
+        end
     end
 
-    clearPath(state.stage_dir)
-    clearPath(SENTINEL_PATH)
     local ok, err = writeManagedFiles(state.managed_files)
     if not ok then
         return false, err
     end
+    clearPath(state.backup_dir)
+    clearPath(SENTINEL_PATH)
+    clearPath(state.stage_dir)
     return true
 end
 
 function updater.resumeInterruptedUpdate(logger)
-    local state = readSentinel()
+    local state, err = readSentinel()
+    if err then
+        return false, err
+    end
     if not state then
         return true, nil
     end
@@ -337,6 +409,7 @@ function updater.applyLocalUpdate(options)
 
     local state = {
         stage_dir = STAGE_DIR,
+        backup_dir = BACKUP_DIR,
         files = stagedPaths,
         managed_files = (function()
             local result = {}

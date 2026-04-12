@@ -6,8 +6,70 @@ local updater = require("lib/updater")
 local version = require("lib/version")
 
 local service = {}
+local SERVICE_STATE_PATH = ".enmon_update_service_state"
+local UPDATER_SENTINEL_PATH = ".enmon_update_state"
+local UPDATER_STAGE_DIR = ".enmon_update_stage"
 local pending_offer = nil
 local update_in_progress = false
+
+local function readServiceState()
+    if not fs.exists(SERVICE_STATE_PATH) then
+        return { pending_offer = nil, update_in_progress = false }
+    end
+
+    local file = fs.open(SERVICE_STATE_PATH, "r")
+    if not file then
+        return { pending_offer = nil, update_in_progress = false }
+    end
+
+    local raw = file.readAll()
+    file.close()
+
+    local ok, parsed = pcall(textutils.unserialize, raw)
+    if not ok or type(parsed) ~= "table" then
+        fs.delete(SERVICE_STATE_PATH)
+        return { pending_offer = nil, update_in_progress = false }
+    end
+
+    local state = {
+        pending_offer = type(parsed.pending_offer) == "table" and parsed.pending_offer or nil,
+        update_in_progress = parsed.update_in_progress == true,
+    }
+
+    if state.pending_offer then
+        if type(state.pending_offer.desired_version) ~= "string" then state.pending_offer = nil end
+        if state.pending_offer and type(state.pending_offer.sender_id) ~= "number" then state.pending_offer = nil end
+        if state.pending_offer and type(state.pending_offer.force) ~= "boolean" then state.pending_offer.force = false end
+    end
+
+    if state.update_in_progress and not fs.exists(UPDATER_SENTINEL_PATH) and not fs.exists(UPDATER_STAGE_DIR) then
+        state.update_in_progress = false
+    end
+
+    return state
+end
+
+local function writeServiceState()
+    if not pending_offer and not update_in_progress then
+        if fs.exists(SERVICE_STATE_PATH) then fs.delete(SERVICE_STATE_PATH) end
+        return
+    end
+
+    local file = fs.open(SERVICE_STATE_PATH, "w")
+    if not file then return end
+    file.write(textutils.serialize({
+        pending_offer = pending_offer,
+        update_in_progress = update_in_progress,
+    }))
+    file.close()
+end
+
+do
+    local state = readServiceState()
+    pending_offer = state.pending_offer
+    update_in_progress = state.update_in_progress
+    writeServiceState()
+end
 
 local function cfgGet(cfg, key)
     if type(cfg.get) == "function" then
@@ -46,6 +108,11 @@ function service.handleMessage(cfg, msg, logger)
     local controllerId = cfgGet(cfg, "controller_id")
     local currentVersion = version.getVersion()
 
+    if role ~= "controller" and controllerId == nil then
+        logLine(logger, "[update] Ignoring update command because controller_id is not configured")
+        return true
+    end
+
     if role ~= "controller" and controllerId ~= nil and msg.sender_id ~= controllerId then
         logLine(logger, "[update] Ignoring update command from unknown sender: " .. tostring(msg.sender_id))
         return true
@@ -77,6 +144,7 @@ function service.handleMessage(cfg, msg, logger)
             node_id = msg.node_id,
             force = forceUpdate,
         }
+        writeServiceState()
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "offer",
             status = "offered",
@@ -103,6 +171,7 @@ function service.handleMessage(cfg, msg, logger)
         end
 
         pending_offer = nil
+        writeServiceState()
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "abort",
             status = "aborted",
@@ -115,6 +184,18 @@ function service.handleMessage(cfg, msg, logger)
 
     local desiredVersion = msg.payload and msg.payload.desired_version or nil
     local forceUpdate = msg.payload and msg.payload.force == true or false
+    if update_in_progress then
+        sendReply(net.MSG.UPDATE_STATUS, {
+            phase = "start",
+            status = "in_progress",
+            role = role,
+            local_version = currentVersion,
+            desired_version = desiredVersion,
+            force = forceUpdate,
+        }, msg)
+        logLine(logger, "[update] Rejecting start because an update is already in progress")
+        return true
+    end
     if not pending_offer or pending_offer.sender_id ~= msg.sender_id or pending_offer.desired_version ~= desiredVersion or pending_offer.force ~= forceUpdate then
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "start",
@@ -130,6 +211,7 @@ function service.handleMessage(cfg, msg, logger)
 
     pending_offer = nil
     update_in_progress = true
+    writeServiceState()
 
     sendReply(net.MSG.UPDATE_ACK, {
         command = net.MSG.UPDATE_START,
@@ -156,6 +238,7 @@ function service.handleMessage(cfg, msg, logger)
 
     if not ok then
         update_in_progress = false
+        writeServiceState()
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "error",
             status = "failed",
@@ -170,6 +253,7 @@ function service.handleMessage(cfg, msg, logger)
 
     if not result.updated then
         update_in_progress = false
+        writeServiceState()
         sendReply(net.MSG.UPDATE_STATUS, {
             phase = "complete",
             status = "noop",
@@ -183,6 +267,7 @@ function service.handleMessage(cfg, msg, logger)
     end
 
     update_in_progress = false
+    writeServiceState()
     sendReply(net.MSG.UPDATE_STATUS, {
         phase = "complete",
         status = "success",

@@ -10,7 +10,8 @@
 --     target_sender_id = number|nil, -- optional computer ID target filter
 --     msg_id    = string|nil,        -- optional correlation ID for ACK/status
 --     payload   = table,    -- message-specific data
---     hmac      = string,   -- HMAC-SHA256(shared_secret, sender_id..type..serialize(payload))
+--     hmac      = string,   -- legacy HMAC for mixed-version rollout compatibility
+--     hmac_v2   = string,   -- HMAC-SHA256 over sender identity + routing + payload
 --   }
 
 local hmacLib = require("lib/hmac")
@@ -39,6 +40,27 @@ local _channel = 42
 local _secret  = "enmon_default"
 local _node_id = "unknown"
 
+local function constantTimeEquals(left, right)
+    if type(left) ~= "string" or type(right) ~= "string" then return false end
+    if #left ~= #right then return false end
+
+    local diff = 0
+    for i = 1, #left do
+        diff = bit32.bor(diff, bit32.bxor(left:byte(i), right:byte(i)))
+    end
+    return diff == 0
+end
+
+local function legacyAuthAllowed(msg_type)
+    return msg_type == net.MSG.NODE_HELLO
+        or msg_type == net.MSG.UPDATE_CHECK
+        or msg_type == net.MSG.UPDATE_OFFER
+        or msg_type == net.MSG.UPDATE_START
+        or msg_type == net.MSG.UPDATE_STATUS
+        or msg_type == net.MSG.UPDATE_ACK
+        or msg_type == net.MSG.UPDATE_ABORT
+end
+
 -- Open the ender modem and configure channel + secret.
 -- modem: peripheral object (already wrapped)
 -- channel: number
@@ -59,11 +81,24 @@ function net.close()
     end
 end
 
--- Compute HMAC tag for a message.
-local function makeTag(msg_type, sender_id, payload, target_node_id, target_sender_id, msg_id)
+-- Legacy tag used so updated nodes can still communicate with pre-v2 peers during rollout.
+local function makeLegacyTag(msg_type, sender_id, payload, target_node_id, target_sender_id, msg_id)
     local data = textutils.serialize({
         type = msg_type,
         sender_id = sender_id,
+        payload = payload,
+        target_node_id = target_node_id,
+        target_sender_id = target_sender_id,
+        msg_id = msg_id,
+    })
+    return hmacLib.hmac256(_secret, data)
+end
+
+local function makeTag(msg_type, sender_id, node_id, payload, target_node_id, target_sender_id, msg_id)
+    local data = textutils.serialize({
+        type = msg_type,
+        sender_id = sender_id,
+        node_id = node_id,
         payload = payload,
         target_node_id = target_node_id,
         target_sender_id = target_sender_id,
@@ -79,7 +114,8 @@ function net.send(msg_type, payload, target_channel, options)
     options = options or {}
     local sender_id = os.getComputerID()
     local msg_id = options.msg_id or (tostring(sender_id) .. ":" .. tostring(os.clock()) .. ":" .. tostring(math.random(1000, 9999)))
-    local tag = makeTag(msg_type, sender_id, payload, options.target_node_id, options.target_sender_id, msg_id)
+    local tag = makeTag(msg_type, sender_id, _node_id, payload, options.target_node_id, options.target_sender_id, msg_id)
+    local legacyTag = makeLegacyTag(msg_type, sender_id, payload, options.target_node_id, options.target_sender_id, msg_id)
     local msg = textutils.serialize({
         type      = msg_type,
         sender_id = sender_id,
@@ -88,7 +124,8 @@ function net.send(msg_type, payload, target_channel, options)
         target_sender_id = options.target_sender_id,
         msg_id    = msg_id,
         payload   = payload or {},
-        hmac      = tag,
+        hmac      = legacyTag,
+        hmac_v2   = tag,
     })
     local ch = target_channel or _channel
     local ok, err = pcall(_modem.transmit, _modem, ch, ch, msg)
@@ -119,12 +156,21 @@ function net.validate(raw)
     if msg.msg_id ~= nil and type(msg.msg_id) ~= "string" then return nil, "bad msg_id" end
     if type(msg.payload)   ~= "table"  then return nil, "missing payload" end
     if type(msg.hmac)      ~= "string" then return nil, "missing hmac" end
+    if msg.hmac_v2 ~= nil and type(msg.hmac_v2) ~= "string" then return nil, "bad hmac_v2" end
 
-    -- HMAC check
-    local expected = makeTag(msg.type, msg.sender_id, msg.payload, msg.target_node_id, msg.target_sender_id, msg.msg_id)
-    if msg.hmac ~= expected then return nil, "hmac mismatch" end
+    local expectedV2 = makeTag(msg.type, msg.sender_id, msg.node_id, msg.payload, msg.target_node_id, msg.target_sender_id, msg.msg_id)
+    if msg.hmac_v2 and constantTimeEquals(msg.hmac_v2, expectedV2) then
+        msg.auth_version = 2
+        return msg, nil
+    end
 
-    return msg, nil
+    local expectedLegacy = makeLegacyTag(msg.type, msg.sender_id, msg.payload, msg.target_node_id, msg.target_sender_id, msg.msg_id)
+    if legacyAuthAllowed(msg.type) and constantTimeEquals(msg.hmac, expectedLegacy) then
+        msg.auth_version = 1
+        return msg, nil
+    end
+
+    return nil, "hmac mismatch"
 end
 
 function net.isTargetedToSelf(msg)
