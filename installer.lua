@@ -322,15 +322,66 @@ local function chooseFromList(section, intro, items, selected, canBack)
     end
 end
 
-local function chooseBoolean(section, intro, current, trueLabel, falseLabel, canBack)
-    local idx = current and 1 or 2
-    local labels = { trueLabel, falseLabel }
+local function chooseToggle(section, intro, current, canBack)
+    local checked = current == true
+
+    local function toggleText()
+        return checked and "[x] Enabled" or "[ ] Disabled"
+    end
+
     while true do
-        local selected, action = chooseFromList(section, intro, labels, idx, canBack)
-        if action ~= "forward" then
-            return nil, action
+        local win = drawChrome(section)
+        local row = 1
+        row = writeParagraph(win, row, intro, STYLE.root_fg)
+        row = row + 2
+
+        local width = select(1, win.getSize())
+        writeAt(win, 1, row, string.rep(" ", width), checked and STYLE.highlight_fg or STYLE.value_fg, checked and STYLE.highlight_bg or STYLE.value_bg)
+        writeAt(win, 3, row, toggleText(), checked and STYLE.highlight_fg or STYLE.value_fg, checked and STYLE.highlight_bg or STYLE.value_bg)
+        row = row + 2
+        row = writeParagraph(win, row, "Press space to toggle. Press Enter to continue.", STYLE.hint_fg)
+
+        drawHint(canBack and "Space: toggle   Enter/right: next   Backspace/left: back   Q: exit" or "Space: toggle   Enter/right: next   Q: exit")
+        local left, right = drawNav(canBack, "Next", STYLE.next_bg)
+
+        local function inRegion(region, x, y)
+            return region and y == region.y and x >= region.x and x < (region.x + region.w)
         end
-        return selected == 1, "forward"
+
+        while true do
+            local event, a, b, c = os.pullEvent()
+            if event == "key" then
+                if a == keys.space then
+                    checked = not checked
+                    break
+                elseif a == keys.enter or a == keys.right then
+                    return checked, "forward"
+                elseif canBack and (a == keys.backspace or a == keys.left) then
+                    return nil, "back"
+                elseif a == keys.q then
+                    return nil, "cancel"
+                end
+            elseif event == "char" then
+                local ch = string.lower(a)
+                if ch == " " or ch == "x" or ch == "t" then
+                    checked = not checked
+                    break
+                elseif ch == "q" then
+                    return nil, "cancel"
+                elseif canBack and ch == "b" then
+                    return nil, "back"
+                end
+            elseif event == "mouse_click" then
+                if inRegion(left, b, c) then
+                    return nil, canBack and "back" or "cancel"
+                elseif inRegion(right, b, c) then
+                    return checked, "forward"
+                elseif c == 6 then
+                    checked = not checked
+                    break
+                end
+            end
+        end
     end
 end
 
@@ -630,12 +681,10 @@ local function pageAutoControl(cfg)
         local lowDefault = math.floor(((cfg.threshold_low or 0.25) * 100) + 0.5)
         local highDefault = math.floor(((cfg.threshold_high or 0.90) * 100) + 0.5)
 
-        local enabled, action = chooseBoolean(
+        local enabled, action = chooseToggle(
             "Auto Control",
             "Controller nodes can automatically start and stop reactors based on matrix fill percentage.",
             enabledDefault,
-            "[x] Enable auto control",
-            "[ ] Disable auto control",
             true
         )
 
