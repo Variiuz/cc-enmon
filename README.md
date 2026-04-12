@@ -56,10 +56,12 @@ Controller terminal only:
 
 ## Update Commands
 
-- `enmon update` checks the remote manifest and updates only when the remote version is newer.
-- `enmon update force` re-downloads and reapplies files even when the version number did not change.
+- `enmon-cli update` checks the remote manifest and updates only when the remote version is newer.
+- `enmon-cli update force` re-downloads and reapplies files even when the version number did not change.
 
 Force mode on the controller exists for the same reason: if you changed files without bumping the manifest version, you can still re-offer and reapply the build.
+
+`enmon.lua` still forwards CLI arguments to `enmon-cli.lua` for compatibility, but the dedicated CLI entrypoint is now the preferred command.
 
 ## Release Helper
 

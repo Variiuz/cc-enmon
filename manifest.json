@@ -1,9 +1,10 @@
 {
-  "version": "0.3.3",
+  "version": "0.3.4",
   "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
   "files": {
     "common": [
       "enmon.lua",
+      "enmon-cli.lua",
       "lib/config.lua",
       "lib/util.lua",
       "lib/version.lua",

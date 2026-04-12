@@ -54,6 +54,15 @@
         "Added terminal log hotkeys and controller monitor/view hotkey documentation.",
         "Added controller terminal alert rotation and release helper tooling."
       ]
+    },
+    {
+      "version": "0.3.4",
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Moved maintenance/update commands into a dedicated enmon-cli.lua entrypoint.",
+        "Kept enmon.lua as the runtime launcher with compatibility forwarding for legacy CLI usage."
+      ]
     }
   ]
 }
