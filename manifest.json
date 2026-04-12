@@ -52,7 +52,7 @@
       "ui/pocket_hud.lua"
     ]
   },
-  "manifest_revision": 0,
+  "manifest_revision": 1,
   "hashes": {
     "installer.lua": "5c5709f74f04878bb64c28107461407af9297ccf86b01937b458618f6904ce2d",
     "lib/basalt.lua": "1885c88b48ff55a12d6648a44d89c2418bf920f15f62713c74217a368c00d887",
@@ -67,7 +67,7 @@
     "lib/node_runtime.lua": "5856ef47a84d18d1cbf03dafdf805896cdb4d6600b728bfdc432034d96c343a0",
     "lib/pocket_link.lua": "fd60591a4619d26c69af8bb817430c95e0079482af8220a10cfbf07de2c95f62",
     "lib/util.lua": "972a0c91a56e5010d314619a2436b04b1e1a9e00b6fdf6f631ecff5799d09ced",
-    "lib/version.lua": "7cef45c904496c9facba76cefaa96e9ddc96e3fe1c965e07b553b63adab85080",
+    "lib/version.lua": "1552faa5db9a235db0f6dde733a1655260aed1d2b0126d85456dd5aadde8ab47",
     "lib/hmac.lua": "ed1a411e072074c8f0c66fcb21d4b28108dc4a3bf415f9c644367d5b283dc974",
     "lib/network.lua": "bbe06b89b4bad33160c41a9cbd78e7703b6635cbe8d39a153de62c2813a76ab8",
     "lib/controller_link.lua": "ac18ed394e1f6e82dc5febf6b021a94a01c7b0d2a1ef427b3748f658db57a6d3",
@@ -76,10 +76,10 @@
     "lib/update_service.lua": "529c71839d7fc18ee271632ad625b159f7ccf7495a52e120a42848d0a0575f4c",
     "lib/peripheral_mgr.lua": "cd5f5654cc26295d347910e01821467bb7f607723c5942ca000affdba673a083",
     "ui/setup.lua": "d8e743dfcf8eb00d0f0151fcfdee669297ef9f300de913e99a26fa64975b5642",
-    "ui/runtime_panel.lua": "ef0023a1210e295acd6601a599f4d6eef501f20ca29e28bdcccbe9dd1098e7f9",
+    "ui/runtime_panel.lua": "c2dabec195de958bfc3eeaed33fbfe73fb5906e34ba26e338726793136a989d3",
     "ui/config_editor.lua": "75634f2c5960dc2642030ea17ae8c352c1b292b03c9af28f54866971298577b4",
     "nodes/controller/init.lua": "384d850641db9c534ec332ab6c9f1e1264597832230ce30efa756c39df32618a",
-    "nodes/controller/actions.lua": "cf965aed295d13fdaf2a79c00ca3549abd4e4eb02d843645ca7f88bea0ba51db",
+    "nodes/controller/actions.lua": "cdc32b89c4d4c5c466d44d55f2cd70a4779a5c6175daa1e59a878432f04824d7",
     "nodes/controller/handlers.lua": "17902b4f5876ea60d1dd9de0af2d26bcf9a5cee2d4413bb692c425b05f4c7e0f",
     "nodes/controller/runtime.lua": "ae84fe937ee7554dc08a2e558fc83f424d227b14ee5cd53d216ddef3b8ddb631",
     "nodes/controller/telemetry.lua": "f49fa153c4c3de576740fea6d6209b12297b87e2225feabf7b4d6ff33315d217",

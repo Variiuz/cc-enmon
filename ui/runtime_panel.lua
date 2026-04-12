@@ -31,10 +31,25 @@ local function truncate(text, width)
 end
 
 local function wrapText(text, width)
+    width = math.max(1, tonumber(width) or 1)
     local lines = {}
-    for raw in tostring(text or ""):gmatch("[^\n]+") do
+    for raw in (tostring(text or "") .. "\n"):gmatch("(.-)\n") do
+        if raw == "" then
+            lines[#lines + 1] = ""
+            goto continue
+        end
+
         local line = ""
         for word in raw:gmatch("%S+") do
+            while #word > width do
+                if line ~= "" then
+                    lines[#lines + 1] = line
+                    line = ""
+                end
+                lines[#lines + 1] = word:sub(1, width)
+                word = word:sub(width + 1)
+            end
+
             if line == "" then
                 line = word
             elseif (#line + 1 + #word) <= width then
@@ -46,9 +61,8 @@ local function wrapText(text, width)
         end
         if line ~= "" then
             lines[#lines + 1] = line
-        elseif raw == "" then
-            lines[#lines + 1] = ""
         end
+        ::continue::
     end
     if #lines == 0 then lines[1] = "" end
     return lines
@@ -83,13 +97,27 @@ function panel.new(section, options)
         return math.max(1, contentHeight(h) - 2)
     end
 
-    local function maxOffset(log_height)
-        return math.max(0, #state.logs - log_height)
+    local function buildLogLines(width)
+        local lines = {}
+        for _, entry in ipairs(state.logs) do
+            local wrapped = wrapText(entry.text, width)
+            for _, text in ipairs(wrapped) do
+                lines[#lines + 1] = {
+                    text = text,
+                    fg = entry.fg,
+                }
+            end
+        end
+        return lines
     end
 
-    local function clampOffset(log_height)
+    local function maxOffset(log_lines, log_height)
+        return math.max(0, #log_lines - log_height)
+    end
+
+    local function clampOffset(log_lines, log_height)
         if state.scroll_offset < 0 then state.scroll_offset = 0 end
-        local limit = maxOffset(log_height)
+        local limit = maxOffset(log_lines, log_height)
         if state.scroll_offset > limit then state.scroll_offset = limit end
     end
 
@@ -159,11 +187,13 @@ function panel.new(section, options)
     end
 
     local function drawLogRows(content, row, height)
-        clampOffset(height)
-        local start = math.max(1, (#state.logs - height + 1) - state.scroll_offset)
-        local finish = math.min(#state.logs, start + height - 1)
+        local width = select(1, content.getSize())
+        local log_lines = buildLogLines(width)
+        clampOffset(log_lines, height)
+        local start = math.max(1, (#log_lines - height + 1) - state.scroll_offset)
+        local finish = math.min(#log_lines, start + height - 1)
         for index = start, finish do
-            local entry = state.logs[index]
+            local entry = log_lines[index]
             writeAt(content, 1, row, entry.text, entry.fg or STYLE.root_fg, STYLE.root_bg)
             row = row + 1
         end
@@ -219,10 +249,11 @@ function panel.new(section, options)
     end
 
     local function scroll(delta)
-        local _, h = root.getSize()
+        local w, h = root.getSize()
         local log_height = state.view == "logs" and computeLogViewHeight(h) or computeSummaryLogHeight(h)
+        local log_lines = buildLogLines(math.max(1, w - 2))
         state.scroll_offset = state.scroll_offset + delta
-        clampOffset(log_height)
+        clampOffset(log_lines, log_height)
         draw()
     end
 
@@ -261,8 +292,9 @@ function panel.new(section, options)
     end
 
     function self.handleKey(key)
-        local _, h = root.getSize()
+        local w, h = root.getSize()
         local log_height = state.view == "logs" and computeLogViewHeight(h) or computeSummaryLogHeight(h)
+        local log_lines = buildLogLines(math.max(1, w - 2))
         local step = math.max(1, math.floor(log_height / 2))
 
         if key == keys.f3 then
@@ -285,7 +317,7 @@ function panel.new(section, options)
             scroll(-step)
             return true
         elseif key == keys.home then
-            state.scroll_offset = maxOffset(log_height)
+            state.scroll_offset = maxOffset(log_lines, log_height)
             draw()
             return true
         elseif key == keys["end"] then

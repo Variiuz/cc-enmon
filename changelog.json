@@ -281,6 +281,17 @@
         "Switch history persistence to memory-first with disk opt-in and restore in-game time displays",
         "Refactor shared graph/runtime/persistence helpers and split role logic into nodes/<role>/ subfolders"
       ]
+    },
+    {
+      "version": "0.4.0",
+      "manifest_revision": 1,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Fix stale managed-file hashes so 0.3.9 nodes can update cleanly to the 0.4.0 release train",
+        "Wrap runtime activity log messages instead of truncating them to a single row",
+        "Align tools/bump-version.ps1 hash normalization with the updater so future manifests match runtime verification"
+      ]
     }
   ]
 }
