@@ -112,6 +112,10 @@ It updates:
 - `lib/version.lua`
 - `changelog.json`
 
+Release rule: do not edit manifest hashes by hand. Use `./tools/bump-version.ps1` for both semantic releases and same-version hotfix revisions so manifest hashes are generated consistently from the script.
+
+Exception: a manual follow-up is acceptable for a narrow EOF/EOL normalization fix when a release file needs line-ending cleanup after the script runs. In that case, rerun the bump flow or otherwise bring the script-generated metadata back into sync instead of maintaining hand-edited hashes as the steady-state process.
+
 ## Energy Units
 
 Mekanism induction matrix readings are normalized to FE-equivalent values before ENMON displays them. This avoids the common Joules-vs-FE mismatch where matrix input/output appears roughly `2.5x` higher than the reactor output feeding it.
