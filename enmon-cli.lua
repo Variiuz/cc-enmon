@@ -26,7 +26,7 @@ local function fatal(msg)
             { "Command", table.concat(args, " ") ~= "" and table.concat(args, " ") or "--" },
             { "Error", tostring(msg), colors.red, colors.white },
         })
-        cli_ui.setHint("Press any key to exit")
+        cli_ui.setHint("Any key Exit")
         os.pullEvent("key")
     else
         term.setTextColor(colors.red)
@@ -45,7 +45,7 @@ local function showUsage()
     })
     cli_ui.log("update        Refresh only if remote version is newer", colors.lightBlue)
     cli_ui.log("update force  Reapply files even if the version is unchanged", colors.lightBlue)
-    cli_ui.setHint("Press any key to exit")
+    cli_ui.setHint("Any key Exit")
     os.pullEvent("key")
 end
 
@@ -56,7 +56,7 @@ cli_ui.setSummary({
     { "Command", table.concat(args, " ") ~= "" and table.concat(args, " ") or "help" },
     { "Status", "Preparing..." },
 })
-cli_ui.setHint("F3 logs. Use enmon-cli update [force]")
+cli_ui.setHint("")
 
 local resumed, resumeErr = updater.resumeInterruptedUpdate(function(message)
     if cli_ui then
@@ -92,7 +92,7 @@ cli_ui.setSummary({
     { "Mode", forceUpdate and "Force" or "Normal" },
     { "Status", "Checking for updates..." },
 })
-cli_ui.setHint(forceUpdate and "Forced local self-update from manifest" or "Local self-update from manifest")
+cli_ui.setHint("")
 
 local ok, result = updater.applyLocalUpdate({
     role = config.get("role"),
@@ -114,7 +114,7 @@ if not result.updated then
         { "Role", tostring(config.get("role")) },
         { "Status", "Already up to date", colors.lime, colors.white },
     })
-    cli_ui.setHint("Press any key to exit")
+    cli_ui.setHint("Any key Exit")
     os.pullEvent("key")
     return
 end

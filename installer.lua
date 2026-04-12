@@ -24,7 +24,7 @@ local function readManifestValue(key, fallback)
     return raw:match(pattern) or fallback
 end
 
-local VERSION    = readManifestValue("version", "0.3.4")
+local VERSION    = readManifestValue("version", "0.3.5")
 local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -529,6 +529,7 @@ local function sanitizeRoleConfig(cfg)
         cfg.auto_ctrl = nil
         cfg.threshold_low = nil
         cfg.threshold_high = nil
+        cfg.update_check_interval = nil
     else
         cfg.controller_id = nil
     end
@@ -757,6 +758,32 @@ local function pageAutoControl(cfg)
     end
 end
 
+local function pageUpdateChecks(cfg)
+    while true do
+        local defaultInterval = tonumber(cfg.update_check_interval) or 90
+
+        local win = drawChrome("Update Checks")
+        local row = 1
+        row = writeParagraph(win, row, "Choose how often the controller checks the manifest for updates automatically.", STYLE.root_fg)
+        row = row + 1
+        row = writeParagraph(win, row, "This only affects the controller's periodic background check. Manual update checks still work anytime.", STYLE.hint_fg)
+        row = row + 1
+
+        drawHint("Enter seconds. Minimum 15. Example: 90")
+        drawNav(true, "Next", STYLE.next_bg)
+
+        local raw = trim(inputField(win, row, "Auto update check interval (seconds)", defaultInterval, "[>=15]"))
+        local value = tonumber(raw)
+
+        if value and value >= 15 then
+            cfg.update_check_interval = math.floor(value + 0.5)
+            return "forward"
+        end
+
+        alert("Update Checks", "Enter a valid interval of at least 15 seconds.")
+    end
+end
+
 local function summaryRows(cfg)
     local rows = {
         { "Role", ROLE_LABELS[cfg.role] or cfg.role },
@@ -777,6 +804,7 @@ local function summaryRows(cfg)
         rows[#rows + 1] = { "Auto control", cfg.auto_ctrl and "Yes" or "No" }
         rows[#rows + 1] = { "Low threshold", tostring(math.floor((cfg.threshold_low or 0.25) * 100 + 0.5)) .. "%" }
         rows[#rows + 1] = { "High threshold", tostring(math.floor((cfg.threshold_high or 0.90) * 100 + 0.5)) .. "%" }
+        rows[#rows + 1] = { "Update checks", tostring(cfg.update_check_interval or 90) .. "s" }
     end
     return rows
 end
@@ -812,6 +840,7 @@ local function buildPages(role)
         end
         if role == "controller" then
             pages[#pages + 1] = pageAutoControl
+            pages[#pages + 1] = pageUpdateChecks
         end
         pages[#pages + 1] = pageConfirm
     end
@@ -1090,3 +1119,4 @@ else
         shell.run("enmon.lua")
     end
 end
+

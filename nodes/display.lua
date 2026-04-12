@@ -9,6 +9,7 @@ local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
 local hud  = require("ui/display_hud")
 local runtime_panel = require("ui/runtime_panel")
+local runtime_actions = require("lib/runtime_actions")
 local update_service = require("lib/update_service")
 
 local MODEM_TYPE = "ender_modem"
@@ -28,7 +29,7 @@ function display.run(cfg)
         })
     end
 
-    runtime_ui.setHint("F3 logs. Monitor HUD runs on the attached monitor; this terminal shows node status")
+    runtime_ui.setHint("F2 Config")
     logLine("[display] Starting display node: " .. cfg.get("node_id"), colors.lime)
     updatePanel("Booting", "Opening network", colors.black)
 
@@ -69,14 +70,24 @@ function display.run(cfg)
         end
     end
 
+    local runtime_action = nil
+
     local function key_loop()
         while true do
             local _, key = os.pullEvent("key")
-            runtime_ui.handleKey(key)
+            if runtime_ui.handleKey(key) then
+            elseif key == keys.f2 then
+                runtime_action = "config"
+                return
+            end
         end
     end
 
-    parallel.waitForAll(net_loop, hud_loop, hello_loop, key_loop)
+    parallel.waitForAny(net_loop, hud_loop, hello_loop, key_loop)
+
+    if runtime_action == "config" then
+        runtime_actions.openConfigEditor(cfg, logLine)
+    end
 end
 
 return display

@@ -1,7 +1,7 @@
 -- ui/setup.lua
 -- Text-mode first-run wizard. No Basalt dependency.
 -- Collects role, node_id, channel, controller_id, monitor side, speaker side,
--- shared_secret, and controller-specific threshold/auto-ctrl settings.
+-- shared_secret, and controller-specific threshold/auto-ctrl/update-check settings.
 -- Writes enmon.cfg and returns the loaded config module.
 
 local config = require("lib/config")
@@ -268,6 +268,11 @@ function setup.run()
             config.set("threshold_low",  lo)
             config.set("threshold_high", hi)
         end
+
+        print()
+        print("-- Automatic update checks --")
+        local interval = promptNumber("Manifest check interval in seconds", 90, 15)
+        config.set("update_check_interval", interval)
     end
 
     -- Save

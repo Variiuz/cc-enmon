@@ -9,6 +9,7 @@
 local net  = require("lib/network")
 local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
+local runtime_actions = require("lib/runtime_actions")
 local update_service = require("lib/update_service")
 local util = require("lib/util")
 local runtime_panel = require("ui/runtime_panel")
@@ -114,7 +115,7 @@ end
 
 function matrix.run(cfg)
     runtime_ui = runtime_panel.new("Matrix Node")
-    runtime_ui.setHint("F3 logs. This terminal shows runtime status; matrix data is sent over network")
+    runtime_ui.setHint("F2 Config")
     logLine("[matrix] Starting matrix node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
@@ -175,14 +176,24 @@ function matrix.run(cfg)
         end
     end
 
+    local runtime_action = nil
+
     local function key_loop()
         while true do
             local _, key = os.pullEvent("key")
-            runtime_ui.handleKey(key)
+            if runtime_ui.handleKey(key) then
+            elseif key == keys.f2 then
+                runtime_action = "config"
+                return
+            end
         end
     end
 
-    parallel.waitForAll(poll_loop, command_loop, key_loop)
+    parallel.waitForAny(poll_loop, command_loop, key_loop)
+
+    if runtime_action == "config" then
+        runtime_actions.openConfigEditor(cfg, logLine)
+    end
 end
 
 return matrix

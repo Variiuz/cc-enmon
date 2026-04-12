@@ -33,7 +33,7 @@ local function fatal(msg)
             { "Computer", tostring(os.getComputerID()) },
             { "Error", tostring(msg), colors.red, colors.white },
         })
-        boot_ui.setHint("Press any key to exit")
+        boot_ui.setHint("Any key Exit")
         os.pullEvent("key")
     else
         term.setTextColor(colors.red)
@@ -53,7 +53,7 @@ boot_ui.setSummary({
     { "Computer", tostring(os.getComputerID()) },
     { "Status", "Loading configuration..." },
 })
-boot_ui.setHint("Run installer.lua if this node is not configured")
+boot_ui.setHint("")
 
 if not resumed then
     fatal("Interrupted update recovery failed: " .. tostring(resumeErr))
@@ -76,7 +76,7 @@ if not config.exists() then
         { "Computer", tostring(os.getComputerID()) },
         { "Status", "No configuration found", colors.red, colors.white },
     })
-    boot_ui.setHint("Run installer.lua to set up this node")
+    boot_ui.setHint("")
     return
 end
 config.load()
@@ -107,7 +107,7 @@ boot_ui.setSummary({
     { "Node", tostring(config.get("node_id")) },
     { "Channel", tostring(config.get("channel")) },
 })
-boot_ui.setHint("Preparing runtime UI...")
+boot_ui.setHint("")
 
 -- Small delay so the user can read the role line before UI takes over
 os.sleep(0.5)

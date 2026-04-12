@@ -159,10 +159,12 @@ function editor.run(cfg)
         auto_ctrl = cfg.auto_ctrl,
         threshold_low = cfg.threshold_low,
         threshold_high = cfg.threshold_high,
+        update_check_interval = cfg.update_check_interval,
     }
     if edits.auto_ctrl == nil then edits.auto_ctrl = true end
     if edits.threshold_low == nil then edits.threshold_low = 0.25 end
     if edits.threshold_high == nil then edits.threshold_high = 0.90 end
+    if edits.update_check_interval == nil then edits.update_check_interval = 90 end
 
     local field_errors = {}
     local panels = {}
@@ -274,6 +276,7 @@ function editor.run(cfg)
             auto_ctrl = boolStr(cfg.auto_ctrl),
             threshold_low = pctStr(cfg.threshold_low),
             threshold_high = pctStr(cfg.threshold_high),
+            update_check_interval = tostring(cfg.update_check_interval or 90) .. "s",
         }
         for key, ref in pairs(summary_refs) do
             local text = values[key] or "--"
@@ -339,6 +342,7 @@ function editor.run(cfg)
             row = addSummaryRow(panels.summary, row, "Auto ctrl", "auto_ctrl")
             row = addSummaryRow(panels.summary, row, "Low", "threshold_low")
             row = addSummaryRow(panels.summary, row, "High", "threshold_high")
+            row = addSummaryRow(panels.summary, row, "Upd check", "update_check_interval")
         end
     end
 
@@ -406,6 +410,9 @@ function editor.run(cfg)
             row = row + 4
             row = registerInput(panels.control, row, "Start reactors below (% or 0-1)", "threshold_low", math.floor((edits.threshold_low or 0.25) * 100 + 0.5), normalizePercent)
             row = registerInput(panels.control, row, "Stop reactors above (% or 0-1)", "threshold_high", math.floor((edits.threshold_high or 0.90) * 100 + 0.5), normalizePercent)
+            row = registerInput(panels.control, row, "Update check interval seconds (>=15)", "update_check_interval", edits.update_check_interval or 90, function(raw)
+                return normalizeNumber(raw, false, 15)
+            end)
         end
     end
 
@@ -460,6 +467,9 @@ function editor.run(cfg)
                     return false, "Low threshold must be below high threshold"
                 end
             end
+            if type(edits.update_check_interval) ~= "number" or edits.update_check_interval < 15 then
+                return false, "Update check interval must be at least 15 seconds"
+            end
         end
         return true
     end
@@ -480,6 +490,7 @@ function editor.run(cfg)
         cfg.auto_ctrl = edits.auto_ctrl
         cfg.threshold_low = edits.threshold_low
         cfg.threshold_high = edits.threshold_high
+        cfg.update_check_interval = edits.update_check_interval
 
         local file = fs.open("enmon.cfg", "w")
         file.write(textutils.serialize(cfg))

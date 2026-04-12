@@ -63,6 +63,15 @@
         "Moved maintenance/update commands into a dedicated enmon-cli.lua entrypoint.",
         "Kept enmon.lua as the runtime launcher with compatibility forwarding for legacy CLI usage."
       ]
+    },
+    {
+      "version": "0.3.5",
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Refined runtime update UX and controller update presentation",
+        "Added runtime F2 config editing and installer/setup support for update-check interval"
+      ]
     }
   ]
 }

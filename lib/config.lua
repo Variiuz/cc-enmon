@@ -12,6 +12,7 @@
 --   auto_ctrl    boolean  enable automatic reactor control
 --   threshold_low  number  matrix fill % to trigger reactor start  (default 0.25)
 --   threshold_high number  matrix fill % to trigger reactor stop   (default 0.90)
+--   update_check_interval number seconds between controller manifest checks (default 90)
 
 local CONFIG_PATH = "enmon.cfg"
 
@@ -26,6 +27,7 @@ local DEFAULTS = {
     auto_ctrl      = true,
     threshold_low  = 0.25,
     threshold_high = 0.90,
+    update_check_interval = 90,
 }
 
 local config = {}
@@ -48,6 +50,7 @@ function config.load()
         if _data.controller_id ~= nil then _data.controller_id = tonumber(_data.controller_id) end
         if _data.threshold_low  ~= nil then _data.threshold_low  = tonumber(_data.threshold_low)  end
         if _data.threshold_high ~= nil then _data.threshold_high = tonumber(_data.threshold_high) end
+        if _data.update_check_interval ~= nil then _data.update_check_interval = tonumber(_data.update_check_interval) end
         return true
     end
     _data = {}
@@ -75,6 +78,23 @@ end
 
 function config.delete()
     if fs.exists(CONFIG_PATH) then fs.delete(CONFIG_PATH) end
+end
+
+function config.export()
+    local snapshot = {}
+    for key, default in pairs(DEFAULTS) do
+        if _data[key] ~= nil then
+            snapshot[key] = _data[key]
+        else
+            snapshot[key] = default
+        end
+    end
+    for key, value in pairs(_data) do
+        if snapshot[key] == nil then
+            snapshot[key] = value
+        end
+    end
+    return snapshot
 end
 
 return config

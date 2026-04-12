@@ -116,7 +116,7 @@ if (-not $SkipChangelog) {
     }
 
     $updatedChangelog = [ordered]@{
-        entries = @($newEntry) + $filtered
+        entries = $filtered + @($newEntry)
     }
 
     $updatedChangelog | ConvertTo-Json -Depth 10 | Set-Content -Path $changelogPath

@@ -18,7 +18,7 @@ local _selected_node_id = nil
 local _update_page = 1
 
 local _overview = { reactor_entries = {} }
-local _updates = { row_buttons = {}, row_node_ids = {} }
+local _updates = { row_buttons = {}, row_node_ids = {}, action_state = {} }
 local _chrome = {}
 local renderUpdates
 
@@ -87,6 +87,17 @@ local function statusColor(status)
         return COLORS.alert_fg, COLORS.list_bg
     end
     return COLORS.label, COLORS.list_bg
+end
+
+local function applyActionButton(button, enabled, active_bg, active_fg, active_text)
+    if not button then return end
+    if enabled then
+        button:setBackground(active_bg):setForeground(active_fg)
+        button:setText(active_text)
+    else
+        button:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
+        button:setText(active_text)
+    end
 end
 
 local function setView(view)
@@ -186,7 +197,8 @@ end
 
 local function buildOverview(frame, w, h)
     local e = { reactor_entries = {} }
-    e.frame = frame:addFrame():setPosition(1, 3):setSize(w, h - 2):setBackground(COLORS.bg)
+    local frame_h = h - 2
+    e.frame = frame:addFrame():setPosition(1, 3):setSize(w, frame_h):setBackground(COLORS.bg)
     local localFrame = e.frame
     local wide = w >= 51
     e.wide = wide
@@ -240,7 +252,7 @@ local function buildOverview(frame, w, h)
         e.rx_w = w - rx
 
         e.thresh_lbl = localFrame:addLabel()
-            :setPosition(2, h - 5):setSize(w - 2, 1):setBackground(COLORS.bg)
+            :setPosition(2, frame_h):setSize(w - 2, 1):setBackground(COLORS.bg)
             :setForeground(COLORS.muted):setText("AutoCtrl: OFF  Low: --  High: --")
     else
         local py = 2
@@ -338,7 +350,7 @@ local function buildUpdates(frame, w, h)
         :setBackground(COLORS.action_bg):setForeground(COLORS.btn_fg)
         :setText(" Offer ")
         :onClick(function()
-            if _ctrl then _ctrl.offerUpdates(_selected_node_id) end
+            if _ctrl and e.action_state.offer then _ctrl.offerUpdates(_selected_node_id) end
         end)
     x = x + button_w
 
@@ -347,7 +359,7 @@ local function buildUpdates(frame, w, h)
         :setBackground(colors.green):setForeground(COLORS.btn_fg)
         :setText(" Start ")
         :onClick(function()
-            if _ctrl then _ctrl.startOfferedUpdates() end
+            if _ctrl and e.action_state.start then _ctrl.startOfferedUpdates() end
         end)
     x = x + button_w
 
@@ -356,7 +368,7 @@ local function buildUpdates(frame, w, h)
         :setBackground(colors.red):setForeground(COLORS.btn_fg)
         :setText(" Abort ")
         :onClick(function()
-            if _ctrl then _ctrl.abortUpdates() end
+            if _ctrl and e.action_state.abort then _ctrl.abortUpdates() end
         end)
     x = x + button_w
 
@@ -365,7 +377,7 @@ local function buildUpdates(frame, w, h)
         :setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
         :setText(" Adopt ")
         :onClick(function()
-            if _ctrl then _ctrl.adoptReplacement(_selected_node_id) end
+            if _ctrl and e.action_state.adopt then _ctrl.adoptReplacement(_selected_node_id) end
         end)
 
     return e
@@ -431,7 +443,7 @@ renderUpdates = function(data)
     e.summary:setText(truncate(
         "Controller " .. tostring(snapshot.controller_version or "--") ..
         "  Latest " .. tostring(snapshot.latest_version or "--") ..
-        "  Phase " .. tostring(snapshot.phase or "idle") .. (snapshot.force_mode and "  FORCE" or ""),
+        "  Phase " .. tostring(snapshot.phase or "idle"),
         _monitor_w
     ))
 
@@ -448,22 +460,39 @@ renderUpdates = function(data)
     local selected = getSelectedNodeSnapshot(snapshot)
     if selected then
         e.selected:setText(truncate(
-            "Selected: " .. tostring(selected.node_id) .. "  " .. tostring(selected.role) .. "  " .. tostring(selected.local_version) .. "  " .. tostring(selected.status),
+            "Selected: " .. tostring(selected.node_id) .. "  " .. tostring(selected.role) .. "  " .. tostring(selected.version_display or selected.local_version) .. "  " .. tostring(selected.status),
             math.max(1, _monitor_w - 14)
         ))
         e.detail:setText(truncate(selected.note or "Offer/start/abort update actions for the selected node.", _monitor_w))
     else
         e.selected:setText(truncate("Selected: ALL eligible nodes", math.max(1, _monitor_w - 14)))
         if snapshot.offer then
-            e.detail:setText(truncate("Offer ready for " .. tostring(snapshot.offer.target_count) .. " live node(s), " .. tostring(snapshot.offer.pending_count) .. " pending offline" .. (snapshot.offer.force and " [force]" or ""), _monitor_w))
+            e.detail:setText(truncate("Offer ready for " .. tostring(snapshot.offer.target_count) .. " live node(s), " .. tostring(snapshot.offer.pending_count) .. " pending offline", _monitor_w))
         elseif snapshot.rollout then
             e.detail:setText(truncate("Rollout current: " .. tostring(snapshot.rollout.current or "--") .. "  queued: " .. tostring(snapshot.rollout.queued or 0), _monitor_w))
         else
-            e.detail:setText(truncate(snapshot.force_mode and "Force mode on: next check/offer/start/self-update will reinstall." or "Check, offer, start, abort, or adopt a selected replacement.", _monitor_w))
+            e.detail:setText(truncate("Check, offer, start, abort, or adopt a selected replacement.", _monitor_w))
         end
     end
 
-    local rows = {{ node_id = nil, role = "scope", local_version = snapshot.latest_version or "--", status = "all-eligible", note = "Operate on all eligible nodes" }}
+    local selected_is_controller = selected and selected.role == "controller"
+    local offer_enabled = not selected_is_controller
+    local start_enabled = (snapshot.offer ~= nil) and not selected_is_controller
+    local abort_enabled = snapshot.offer ~= nil or snapshot.rollout ~= nil
+    local adopt_enabled = selected ~= nil and selected.status == "identity-conflict"
+
+    e.action_state.offer = offer_enabled
+    e.action_state.start = start_enabled
+    e.action_state.abort = abort_enabled
+    e.action_state.adopt = adopt_enabled
+
+    applyActionButton(e.check_btn, true, COLORS.action_bg, COLORS.btn_fg, " Check ")
+    applyActionButton(e.offer_btn, offer_enabled, COLORS.action_bg, COLORS.btn_fg, selected_is_controller and " Local " or " Offer ")
+    applyActionButton(e.start_btn, start_enabled, colors.green, COLORS.btn_fg, selected_is_controller and " CLI  " or " Start ")
+    applyActionButton(e.abort_btn, abort_enabled, colors.red, COLORS.btn_fg, " Abort ")
+    applyActionButton(e.adopt_btn, adopt_enabled, COLORS.neutral_bg, COLORS.btn_fg, " Adopt ")
+
+    local rows = {{ node_id = nil, role = "scope", local_version = snapshot.latest_version or "--", version_display = snapshot.latest_version or "--", status = "all-eligible", note = "Operate on all eligible nodes" }}
     for _, node in ipairs(snapshot.nodes or {}) do
         rows[#rows + 1] = node
     end
@@ -485,9 +514,9 @@ renderUpdates = function(data)
 
             local label
             if row.node_id == nil then
-                label = truncate("ALL  scope  " .. tostring(row.local_version or "--") .. "  offer/start eligible nodes", _monitor_w)
+                label = truncate("ALL  scope  " .. tostring(row.version_display or row.local_version or "--") .. "  offer/start eligible nodes", _monitor_w)
             else
-                label = truncate(tostring(row.node_id) .. "  " .. tostring(row.role) .. "  " .. tostring(row.local_version) .. "  " .. tostring(row.status), _monitor_w)
+                label = truncate(tostring(row.node_id) .. "  " .. tostring(row.role) .. "  " .. tostring(row.version_display or row.local_version) .. "  " .. tostring(row.status), _monitor_w)
             end
 
             button:setVisible(true)
@@ -557,10 +586,14 @@ function hud.update(data)
     _chrome.clock:setText(data.timestamp or "--:--:--")
     if data.alerts and #data.alerts > 0 then
         _chrome.alert_bar:setText(truncate("! " .. table.concat(data.alerts, " | "), _monitor_w))
-        _chrome.alert_bar:setForeground(COLORS.alert_fg)
+        if (math.floor(os.clock() / 1.5) % 2) == 0 then
+            _chrome.alert_bar:setBackground(COLORS.bg):setForeground(COLORS.alert_fg)
+        else
+            _chrome.alert_bar:setBackground(COLORS.alert_fg):setForeground(colors.white)
+        end
     else
         _chrome.alert_bar:setText("  All systems nominal")
-        _chrome.alert_bar:setForeground(COLORS.ok_fg)
+        _chrome.alert_bar:setBackground(COLORS.bg):setForeground(COLORS.ok_fg)
     end
 
     renderOverview(data)

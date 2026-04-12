@@ -10,6 +10,7 @@
 local net  = require("lib/network")
 local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
+local runtime_actions = require("lib/runtime_actions")
 local update_service = require("lib/update_service")
 local runtime_panel = require("ui/runtime_panel")
 
@@ -103,7 +104,7 @@ end
 
 function reactor.run(cfg)
     runtime_ui = runtime_panel.new("Reactor Node")
-    runtime_ui.setHint("F3 logs. This node reports reactor state and listens for controller commands")
+    runtime_ui.setHint("F2 Config")
     logLine("[reactor] Starting reactor node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
@@ -176,16 +177,26 @@ function reactor.run(cfg)
         end
     end
 
+    local runtime_action = nil
+
     local function key_loop()
         while true do
             local _, key = os.pullEvent("key")
-            runtime_ui.handleKey(key)
+            if runtime_ui.handleKey(key) then
+            elseif key == keys.f2 then
+                runtime_action = "config"
+                return
+            end
         end
     end
 
     -- parallel.waitForAll keeps all three coroutines running; if one errors
     -- the others terminate, and the error propagates up to enmon.lua's pcall.
-    parallel.waitForAll(timer_loop, poll_loop, cmd_loop, key_loop)
+    parallel.waitForAny(timer_loop, poll_loop, cmd_loop, key_loop)
+
+    if runtime_action == "config" then
+        runtime_actions.openConfigEditor(cfg, logLine)
+    end
 end
 
 return reactor

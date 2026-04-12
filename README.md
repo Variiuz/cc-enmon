@@ -38,6 +38,7 @@ All nodes must share the same **channel** and **shared secret** configured durin
 
 All runtime terminals:
 
+- `F2` open the config editor for this node and relaunch afterward
 - `F3` toggle dedicated log view
 - `Up` / `Down` scroll log view
 - `PageUp` / `PageDown` scroll log view faster
@@ -52,14 +53,11 @@ Controller terminal only:
 - `F7` start the offered rollout
 - `F8` abort the active offer/rollout
 - `F9` self-update the controller
-- `F10` toggle force-update mode for the next check/offer/start/self-update
 
 ## Update Commands
 
 - `enmon-cli update` checks the remote manifest and updates only when the remote version is newer.
 - `enmon-cli update force` re-downloads and reapplies files even when the version number did not change.
-
-Force mode on the controller exists for the same reason: if you changed files without bumping the manifest version, you can still re-offer and reapply the build.
 
 `enmon.lua` still forwards CLI arguments to `enmon-cli.lua` for compatibility, but the dedicated CLI entrypoint is now the preferred command.
 
