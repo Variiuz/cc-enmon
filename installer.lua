@@ -48,8 +48,8 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel(readManifestValue("version", "0.3.8"), readManifestNumber("manifest_revision", 3))
-local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
+local VERSION    = composeReleaseLabel(readManifestValue("version", "0.3.8"), readManifestNumber("manifest_revision", 4))
+local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
 
@@ -734,9 +734,8 @@ local function pageIdentity(cfg)
         local row = 1
         local defaultNode = cfg.node_id or (cfg.role .. "_" .. tostring(os.getComputerID()))
         local defaultChannel = cfg.channel or 42
-        local defaultSecret = cfg.shared_secret or "enmon_default"
 
-        row = writeParagraph(win, row, "Set this node's name and shared network settings. Every node in the same ENMON network must use the same channel and secret.", STYLE.root_fg)
+        row = writeParagraph(win, row, "Set this node's name and channel. New non-controller nodes will appear as unlinked on that channel until a controller adopts them.", STYLE.root_fg)
         row = row + 1
 
         drawHint("Leave a box blank to keep its default value.")
@@ -745,46 +744,17 @@ local function pageIdentity(cfg)
         local node_id = trim(inputField(win, row, "Node ID", defaultNode))
         row = row + 3
         local channel = trim(inputField(win, row, "Network channel", defaultChannel, "[1-65535]"))
-        row = row + 3
-        local secret = trim(inputField(win, row, "Shared secret", defaultSecret))
 
         local channelNumber = tonumber(channel)
         if node_id == "" then
             alert("Network Identity", "Node ID cannot be empty.")
         elseif not channelNumber or channelNumber < 1 or channelNumber > 65535 then
             alert("Network Identity", "Channel must be a number between 1 and 65535.")
-        elseif secret == "" then
-            alert("Network Identity", "Shared secret cannot be empty.")
         else
             cfg.node_id = node_id
             cfg.channel = channelNumber
-            cfg.shared_secret = secret
             return "forward"
         end
-    end
-end
-
-local function pageConnections(cfg)
-    while true do
-        local win = drawChrome("Controller Link")
-        local row = 1
-        local defaultId = cfg.controller_id
-
-        row = writeParagraph(win, row, "Enter the numeric computer ID of the controller. This is not the controller's node name.", STYLE.root_fg)
-        row = row + 1
-
-        drawHint("Controller shows this number in its own setup screens.")
-        drawNav(true, "Next", STYLE.next_bg)
-
-        local raw = trim(inputField(win, row, "Controller computer ID", defaultId or ""))
-        local value = tonumber(raw)
-        if raw:lower() == "q" then return "cancel" end
-        if value then
-            cfg.controller_id = value
-            return "forward"
-        end
-
-        alert("Controller Link", "Controller computer ID must be a number.")
     end
 end
 
@@ -924,10 +894,9 @@ local function summaryRows(cfg)
         { "Role", ROLE_LABELS[cfg.role] or cfg.role },
         { "Node ID", cfg.node_id },
         { "Channel", tostring(cfg.channel) },
-        { "Shared secret", cfg.shared_secret },
     }
-    if cfg.controller_id ~= nil then
-        rows[#rows + 1] = { "Controller ID", tostring(cfg.controller_id) }
+    if cfg.role ~= "controller" then
+        rows[#rows + 1] = { "Linking", "Adopt into a controller after install" }
     end
     if cfg.monitor_side then
         rows[#rows + 1] = { "Monitor", cfg.monitor_side }
@@ -977,9 +946,6 @@ local function buildPages(role, state)
     if role then
         pages[#pages + 1] = pagePeripherals
         pages[#pages + 1] = pageIdentity
-        if role ~= "controller" then
-            pages[#pages + 1] = pageConnections
-        end
         if role == "controller" or role == "display" then
             pages[#pages + 1] = pageHardware
         end
@@ -1280,6 +1246,8 @@ else
         shell.run("enmon.lua")
     end
 end
+
+
 
 
 

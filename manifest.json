@@ -1,6 +1,6 @@
 {
   "version": "0.3.8",
-  "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
+  "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/",
   "rollout_policy": "controller-first",
   "files": {
     "common": [
@@ -39,32 +39,32 @@
       "ui/pocket_hud.lua"
     ]
   },
-  "manifest_revision": 3,
+  "manifest_revision": 4,
   "hashes": {
-    "installer.lua": "786d34f151ff0613718ad174b2682840231ce8268d0887bc72ac0c6fc15c4b70",
+    "installer.lua": "9144831a3ea6397c903f24c3033b04fbcc8479555cb6b0a7da2f0d3e0055a660",
     "lib/basalt.lua": "1885c88b48ff55a12d6648a44d89c2418bf920f15f62713c74217a368c00d887",
     "enmon.lua": "1e197bf38d6b34db45a6513b0f18e36ddf62da5b254b0b836129afd1d6f9f71a",
-    "enmon-cli.lua": "05c34269ed7a481af51d00ec6ea6e6d2fd9134cf2955cf49d0ea82de7810f5ce",
-    "lib/config.lua": "b9bbbb34cb73da97315d82874cbb85b352e1b80770b2c187342726a681a07eb5",
+    "enmon-cli.lua": "2014725f2d5701596c1309977455a18dcd7bb392c85a4e90ab2e03e6e56caa8c",
+    "lib/config.lua": "deae1e608b0c1cc7ea7322bac4e0cd6ea1c38037f6a668cfaa54774cdcb58a72",
     "lib/runtime_actions.lua": "4170b9b1af031790c64c9f5f024467c2d008daaddbea9305f2955ccc95a24f18",
     "lib/util.lua": "bbde7977cfbd9344793c9264e47afdd31640bb7c69f0c6eb3adb3d6cda991786",
-    "lib/version.lua": "46222147149d263f014b9b493c5aaef28a59414406434e9646523fe5f38a2625",
+    "lib/version.lua": "866b572669a25fe00db6a1433251746d0a7650585bb764083bd2cc5cc751f490",
     "lib/hmac.lua": "ed1a411e072074c8f0c66fcb21d4b28108dc4a3bf415f9c644367d5b283dc974",
-    "lib/network.lua": "d8b18bbadd81c9f528d80e09630c5da94a71a13d72669639d0508cfa96d16a86",
-    "lib/node_identity.lua": "198ac51dc0594687e648d4259fc7c53ac42c18ea8a12d5e0bd3feabd9db9277a",
-    "lib/updater.lua": "d282b616f8a7cfb1e1698062e849a8ed16dc35b79a8c5d490072cfdc2723a41f",
-    "lib/update_service.lua": "539601630997677c29d7b3d3533d289784f91aa570985d077f8a189e9236ca3c",
-    "lib/peripheral_mgr.lua": "6b502d4a6fc972626f451c0d0daada3e85371e1228cf91d986a92dd7b8968596",
-    "ui/setup.lua": "dc7371d3826afa6613dcf4e01a54ff1a9b7685e452ffb52d79939715527159e9",
+    "lib/network.lua": "fc60f0d3830bcca1501030c0803eced3898a18ba13308cad5bed1389dbfe8656",
+    "lib/node_identity.lua": "ecfb5804d568e3d3f5c813e5665eaceeb6e8482d0c53039b5a07b6c49103fa83",
+    "lib/updater.lua": "e3774d0c4a458d07bbdf13a999894d973b564285b2731bc20bc4379ffecdfe44",
+    "lib/update_service.lua": "529c71839d7fc18ee271632ad625b159f7ccf7495a52e120a42848d0a0575f4c",
+    "lib/peripheral_mgr.lua": "da2854032fe8f2bb5269ee80ce2836d812999d9fc039dd743a4e80fab09773af",
+    "ui/setup.lua": "ba726d6fe23a3b363a430e85f8fa30ec2607e4cfaee4f50b92435a4b3aa04a1e",
     "ui/runtime_panel.lua": "ef0023a1210e295acd6601a599f4d6eef501f20ca29e28bdcccbe9dd1098e7f9",
-    "ui/config_editor.lua": "a47b78e4b24ed53960088c2a1224712fc856dd9c4e7fc7fd82f5d9e72d5b4b94",
-    "nodes/controller.lua": "fcb6cbcf8204b3c748d52fbbf54a17cb31c4fa790870f562fafe74d1bd049e84",
-    "ui/controller_hud.lua": "9cb9aec35950f7f0b59ff68cecd5facde33668815f23e8fb4a6149f300dcc632",
-    "nodes/matrix.lua": "29ca23e2565dc6607d48f9ff6b7cdfe5009569a810fa8b2f051771d6ced43701",
-    "nodes/reactor.lua": "fd46fa131b28dbfa49df43d01049fe3e69753ffa8f0174bd2018fb604d8a9eb4",
-    "nodes/display.lua": "e768d3d047cf1637849ac4ac037aab3678e7e9b9aa795a6798cb9f7cbb3c97bc",
+    "ui/config_editor.lua": "222278221cbc527c1d9becba536a0be5b368f550c250d2202a2b8fd8bf12c0fe",
+    "nodes/controller.lua": "abfdc29e20796ee44f1746b2064aa54723fd80523ecfb75122ec609ab80f7a74",
+    "ui/controller_hud.lua": "2cfad7f967cd56d424e98ee2474ee5490e129ba2e43da021ce3a1513c7a94195",
+    "nodes/matrix.lua": "937e3f384cd226c434059562fe5601058310a565c357b79207a098a31445c191",
+    "nodes/reactor.lua": "f6d35a292fd84cc50e38f734c20c776725deabd5675b85e03bf43d63a274843c",
+    "nodes/display.lua": "cf6a5caf287d3024942552e02e524c6802f0df5a50162287d199c4160787d267",
     "ui/display_hud.lua": "a409c5bc7cec5c39962c4e3cc0a8c348dca2b95cdaf04bc7618ea25a1b513e85",
-    "nodes/pocket.lua": "8484f6b967a11fb0dc2c6fe75ff298f71cb50024efc344eaa6054b8d03bd588f",
+    "nodes/pocket.lua": "99b7b7b1f27b360d8e30b0eace5f97eb43dd33ab502c37ddc940117660a3aa56",
     "ui/pocket_hud.lua": "773746d0408b2b0159d923460045c453e32d8d6432f27bebc3c52fa8ab7d3ae7"
   }
 }

@@ -80,7 +80,7 @@ local function statusColor(status)
     if status == "queued" or status == "checking" or status == "ack" or status == "in_progress" or status == "starting" or status == "abort-requested" then
         return COLORS.value, COLORS.list_bg
     end
-    if status == "pending-offline" or status == "wrong-controller" or status == "version-mismatch" or status == "no-check-response" or status == "cannot-abort" or status == "aborted" then
+    if status == "unlinked" or status == "pending-offline" or status == "wrong-controller" or status == "version-mismatch" or status == "no-check-response" or status == "cannot-abort" or status == "aborted" or status == "adopting" then
         return COLORS.warn_fg, COLORS.list_bg
     end
     if status == "identity-conflict" or status == "failed" or status == "timeout" or status == "rejected-no-offer" then
@@ -450,6 +450,7 @@ renderUpdates = function(data)
     local counts = snapshot.counts or {}
     e.counts:setText(truncate(
         "Q:" .. tostring(counts.queued or 0) ..
+        "  Unlk:" .. tostring(counts.unlinked or 0) ..
         "  Pend:" .. tostring(counts.pending_offline or 0) ..
         "  Conflict:" .. tostring(counts.identity_conflict or 0) ..
         "  Wrong:" .. tostring(counts.wrong_controller or 0) ..
@@ -471,7 +472,7 @@ renderUpdates = function(data)
         elseif snapshot.rollout then
             e.detail:setText(truncate("Rollout current: " .. tostring(snapshot.rollout.current or "--") .. "  queued: " .. tostring(snapshot.rollout.queued or 0), _monitor_w))
         else
-            e.detail:setText(truncate("Check, offer, start, abort, or adopt a selected replacement.", _monitor_w))
+            e.detail:setText(truncate("Check, offer, start, abort, or adopt a selected unlinked node.", _monitor_w))
         end
     end
 
@@ -479,7 +480,7 @@ renderUpdates = function(data)
     local offer_enabled = not selected_is_controller
     local start_enabled = (snapshot.offer ~= nil) and not selected_is_controller
     local abort_enabled = snapshot.offer ~= nil or snapshot.rollout ~= nil
-    local adopt_enabled = selected ~= nil and selected.status == "identity-conflict"
+    local adopt_enabled = selected ~= nil and selected.status == "unlinked"
 
     e.action_state.offer = offer_enabled
     e.action_state.start = start_enabled

@@ -154,7 +154,6 @@ function editor.run(cfg)
         role = cfg.role,
         node_id = cfg.node_id,
         channel = cfg.channel or 42,
-        shared_secret = cfg.shared_secret or "enmon_default",
         controller_id = cfg.controller_id,
         monitor_side = cfg.monitor_side,
         speaker_side = cfg.speaker_side,
@@ -272,8 +271,7 @@ function editor.run(cfg)
             role = ROLE_LABELS[cfg.role] or tostring(cfg.role),
             node_id = cfg.node_id or "--",
             channel = tostring(cfg.channel or "--"),
-            shared_secret = cfg.shared_secret or "--",
-            controller_id = cfg.controller_id and tostring(cfg.controller_id) or "--",
+            controller_id = cfg.controller_id and ("Adopted to " .. tostring(cfg.controller_id)) or "Unlinked",
             monitor_side = cfg.monitor_side or "--",
             speaker_side = cfg.speaker_side or "none",
             auto_ctrl = boolStr(cfg.auto_ctrl),
@@ -334,7 +332,6 @@ function editor.run(cfg)
         row = addSummaryRow(panels.summary, row, "Role", "role")
         row = addSummaryRow(panels.summary, row, "Node ID", "node_id")
         row = addSummaryRow(panels.summary, row, "Channel", "channel")
-        row = addSummaryRow(panels.summary, row, "Secret", "shared_secret")
         if cfg.role ~= "controller" then
             row = addSummaryRow(panels.summary, row, "Controller", "controller_id", nil, COLORS.warn_fg)
         end
@@ -353,7 +350,7 @@ function editor.run(cfg)
     panels.network = newPanel()
     do
         local row = 1
-        row = addNote(panels.network, row, "Edit identity and network settings for this node.")
+        row = addNote(panels.network, row, cfg.role == "controller" and "Edit identity and network settings for this controller." or "Edit identity and channel settings. Controller linking is handled by adoption, not manual entry.")
         row = row + 1
         row = registerInput(panels.network, row, "Node ID", "node_id", edits.node_id, function(raw)
             return normalizeText(raw, false)
@@ -361,13 +358,8 @@ function editor.run(cfg)
         row = registerInput(panels.network, row, "Channel (1-65535)", "channel", edits.channel, function(raw)
             return normalizeNumber(raw, false, 1, 65535)
         end)
-        row = registerInput(panels.network, row, "Shared secret", "shared_secret", edits.shared_secret, function(raw)
-            return normalizeText(raw, false)
-        end)
         if cfg.role ~= "controller" then
-            row = registerInput(panels.network, row, "Controller computer ID", "controller_id", edits.controller_id, function(raw)
-                return normalizeNumber(raw, false, 0)
-            end)
+            addNote(panels.network, row, "Current link: " .. (edits.controller_id and ("Controller " .. tostring(edits.controller_id)) or "Unlinked"), COLORS.value_fg)
         end
     end
 
@@ -450,12 +442,6 @@ function editor.run(cfg)
         if type(edits.channel) ~= "number" or edits.channel < 1 or edits.channel > 65535 then
             return false, "Channel must be 1-65535"
         end
-        if trim(edits.shared_secret) == "" then
-            return false, "Shared secret is required"
-        end
-        if cfg.role ~= "controller" and type(edits.controller_id) ~= "number" then
-            return false, "Controller computer ID must be numeric"
-        end
         if (cfg.role == "controller" or cfg.role == "display") and trim(edits.monitor_side) == "" then
             return false, "Monitor side/name is required"
         end
@@ -487,7 +473,6 @@ function editor.run(cfg)
 
         cfg.node_id = edits.node_id
         cfg.channel = edits.channel
-        cfg.shared_secret = edits.shared_secret
         cfg.controller_id = edits.controller_id
         cfg.monitor_side = edits.monitor_side
         cfg.speaker_side = edits.speaker_side

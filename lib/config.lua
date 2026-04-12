@@ -4,10 +4,10 @@
 --   role         string  "controller" | "matrix" | "reactor" | "display" | "pocket"
 --   node_id      string  unique identifier for this node (e.g. "matrix_1")
 --   channel      number  ender modem channel (default 42)
---   controller_id string  computer ID of the controller (non-controller nodes)
+--   controller_id number  computer ID of the adopted controller (non-controller nodes)
+--   controller_token string per-node operational auth token issued on adoption
 --   monitor_side string  side/name of monitor peripheral (controller + display)
 --   speaker_side string  side/name of speaker peripheral (controller, optional)
---   shared_secret string  HMAC secret; must match across all nodes in the network
 --   -- Controller-only --
 --   auto_ctrl    boolean  enable automatic reactor control
 --   threshold_low  number  matrix fill % to trigger reactor start  (default 0.25)
@@ -15,16 +15,16 @@
 --   update_check_interval number seconds between controller manifest checks (default 90)
 
 local CONFIG_PATH = "enmon.cfg"
-local CONFIG_VERSION = 2
+local CONFIG_VERSION = 4
 
 local DEFAULTS = {
     role           = nil,
     node_id        = nil,
     channel        = 42,
     controller_id  = nil,
+    controller_token = nil,
     monitor_side   = nil,
     speaker_side   = nil,
-    shared_secret  = "enmon_default",
     auto_ctrl      = true,
     threshold_low  = 0.25,
     threshold_high = 0.90,
@@ -100,7 +100,9 @@ local function sanitizeRoleConfig(data, meta)
         data.update_check_interval = nil
     else
         if data.controller_id ~= nil then note(meta, "Removed controller self-link setting") end
+        if data.controller_token ~= nil then note(meta, "Removed controller self token") end
         data.controller_id = nil
+        data.controller_token = nil
     end
     if data.role ~= "controller" and data.role ~= "display" then
         if data.monitor_side ~= nil then note(meta, "Removed monitor binding for non-monitor role") end
@@ -121,7 +123,7 @@ local function normalizeData(input)
 
     raw.role = normalizeText(raw.role, nil, false)
     raw.node_id = normalizeText(raw.node_id, nil, false)
-    raw.shared_secret = normalizeText(raw.shared_secret, DEFAULTS.shared_secret, false)
+    raw.controller_token = normalizeText(raw.controller_token, nil, true)
     raw.monitor_side = normalizeText(raw.monitor_side, nil, true)
     raw.speaker_side = normalizeText(raw.speaker_side, nil, true)
     raw.channel = normalizeInteger(raw.channel, DEFAULTS.channel)
@@ -147,6 +149,10 @@ local function normalizeData(input)
     if raw.controller_id ~= nil and raw.controller_id < 0 then
         raw.controller_id = nil
         note(meta, "Removed invalid controller computer ID")
+    end
+    if raw.shared_secret ~= nil then
+        raw.shared_secret = nil
+        note(meta, "Removed deprecated shared secret")
     end
     if raw.role == "controller" then
         if raw.threshold_low == nil then

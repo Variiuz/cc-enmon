@@ -38,6 +38,27 @@ local function showUsage()
     println("  update force  Reapply files even if the version is unchanged")
     println("  reinstall     Alias of update force")
     println("  verify        Compare local files against the remote manifest")
+    println("Flags:")
+    println("  --yes         Skip confirmation prompts for update/reinstall")
+end
+
+local function hasArg(name)
+    for _, value in ipairs(args) do
+        if value == name then
+            return true
+        end
+    end
+    return false
+end
+
+local function confirmPrompt(lines)
+    for _, line in ipairs(lines or {}) do
+        println(line, colors.orange)
+    end
+    print("Proceed? [y/N]: ")
+    local answer = read()
+    answer = tostring(answer or ""):lower()
+    return answer == "y" or answer == "yes"
 end
 
 local resumed, resumeErr = updater.resumeInterruptedUpdate(function(message)
@@ -63,7 +84,8 @@ if not config.exists() then
 end
 config.load()
 
-local forceUpdate = command == "reinstall" or args[2] == "force" or args[2] == "--force"
+local forceUpdate = command == "reinstall" or hasArg("force") or hasArg("--force")
+local assumeYes = hasArg("--yes") or hasArg("-y")
 
 println("ENMON CLI " .. tostring(VERSION), colors.cyan)
 println("Role: " .. tostring(config.get("role")))
@@ -121,7 +143,40 @@ if command == "verify" then
 end
 
 println("Mode: " .. (forceUpdate and "Force/Reinstall" or "Normal"))
-println(command == "reinstall" and "Reinstalling from manifest..." or "Checking for updates...")
+println(command == "reinstall" and "Preparing reinstall from manifest..." or "Checking for updates...")
+
+local info, infoErr = updater.checkForUpdate(config.get("role"), nil, forceUpdate)
+if not info then
+    fatal("Update check failed: " .. tostring(infoErr))
+end
+
+println("Installed version: " .. tostring(info.current_version))
+println("Remote version:    " .. tostring(info.latest_version))
+
+if not info.needs_update then
+    println("Already up to date.", colors.lime)
+    return
+end
+
+local confirmLines
+if forceUpdate then
+    confirmLines = {
+        "About to reapply managed files from the remote manifest.",
+        "This can overwrite local ENMON changes.",
+    }
+else
+    confirmLines = {
+        "About to update this node from " .. tostring(info.current_version) .. " to " .. tostring(info.latest_version) .. ".",
+        "The computer will reboot after a successful update.",
+    }
+end
+
+if not assumeYes and not confirmPrompt(confirmLines) then
+    println("Update cancelled.", colors.orange)
+    return
+end
+
+println(forceUpdate and "Reapplying files..." or "Downloading and applying update...")
 
 local ok, result = updater.applyLocalUpdate({
     role = config.get("role"),

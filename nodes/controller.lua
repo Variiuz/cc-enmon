@@ -8,6 +8,7 @@
 -- - Fires speaker alerts when conditions are met
 
 local net  = require("lib/network")
+local controller_link = require("lib/controller_link")
 local pmgr = require("lib/peripheral_mgr")
 local updater = require("lib/updater")
 local util = require("lib/util")
@@ -36,6 +37,7 @@ local runtime_ui = nil
 local active_cfg = nil
 local rolloutRank
 local performUpdateCheck
+local refreshPanel
 
 -- ── State ───────────────────────────────────────────────────────────────────────
 -- matrix_state: latest data from any matrix node
@@ -52,7 +54,7 @@ local state = {
         latest_version = nil,
         rollout_policy = version.getRolloutPolicy(),
         nodes = {},
-        last_check_id = nil,
+        last_check_ids = {},
         check_deadline = nil,
         offer = nil,
         last_abort_ids = {},
@@ -112,6 +114,16 @@ local function rememberNode(node_id, role, sender_id, payload)
         if payload.version then entry.local_version = payload.version end
         if payload.controller_id ~= nil then entry.controller_id = payload.controller_id end
         if payload.status ~= nil then entry.node_status = payload.status end
+        if payload.claim_code ~= nil then entry.claim_code = payload.claim_code end
+        if payload.adopted ~= nil then entry.adopted = payload.adopted == true end
+    end
+
+    if entry.adopted ~= true and entry.claim_code then
+        entry.unlinked = true
+        entry.controller_id = nil
+    elseif entry.adopted == true then
+        entry.unlinked = false
+        entry.claim_code = nil
     end
 
     if change.sender_changed then
@@ -135,6 +147,24 @@ local function rememberNode(node_id, role, sender_id, payload)
     change.controller_changed = previous_controller ~= entry.controller_mismatch
 
     return entry, change
+end
+
+local function buildNodePayload(node_id, payload)
+    return controller_link.buildControllerPayload(node_id, payload)
+end
+
+local function sendToNode(node_id, sender_id, msgType, payload, msg_id)
+    return net.sendTargeted(msgType, buildNodePayload(node_id, payload), node_id, sender_id, nil, {
+        msg_id = msg_id,
+        auth_key = msgType ~= net.MSG.ADOPT_REQUEST and controller_link.getStoredToken(node_id) or nil,
+    })
+end
+
+local function sendToEntry(entry, msgType, payload, msg_id)
+    if not entry or not entry.node_id or not entry.sender_id then
+        return false, "missing node routing"
+    end
+    return sendToNode(entry.node_id, entry.sender_id, msgType, payload, msg_id)
 end
 
 local function sortQueue(queue)
@@ -259,6 +289,7 @@ end
 
 local function effectiveNodeStatus(entry)
     if not entry then return "unknown" end
+    if entry.unlinked then return "unlinked" end
     if entry.controller_mismatch then return "wrong-controller" end
     if entry.identity_conflict then return "identity-conflict" end
     if isStale(entry.last_seen or 0) then
@@ -409,6 +440,7 @@ local function buildUpdateSnapshot()
     local counts = {
         queued = 0,
         pending_offline = 0,
+        unlinked = 0,
         identity_conflict = 0,
         wrong_controller = 0,
         offered = 0,
@@ -419,6 +451,7 @@ local function buildUpdateSnapshot()
         local status = effectiveNodeStatus(entry)
         if status == "queued" then counts.queued = counts.queued + 1 end
         if status == "pending-offline" then counts.pending_offline = counts.pending_offline + 1 end
+        if status == "unlinked" then counts.unlinked = counts.unlinked + 1 end
         if status == "identity-conflict" then counts.identity_conflict = counts.identity_conflict + 1 end
         if status == "wrong-controller" then counts.wrong_controller = counts.wrong_controller + 1 end
         if status == "offered" then counts.offered = counts.offered + 1 end
@@ -479,7 +512,7 @@ local function collectOfferTargets(cfg, target_node_id)
     local foundTarget = target_node_id == nil
 
     for node_id, entry in pairs(state.updates.nodes) do
-        if node_id ~= cfg.get("node_id") and entry.role ~= "controller" and entry.sender_id then
+        if node_id ~= cfg.get("node_id") and entry.role ~= "controller" and entry.sender_id and not entry.unlinked then
             if target_node_id == nil or node_id == target_node_id then
                 foundTarget = true
                 if entry.controller_mismatch then
@@ -592,7 +625,7 @@ local function autoControl(cfg)
 
     for nid, r in pairs(state.reactors) do
         if not isStale(r.updated) and r.active ~= want_active then
-            net.send(net.MSG.CMD_REACTOR_SET, { active = want_active })
+            sendToNode(nid, r.sender_id, net.MSG.CMD_REACTOR_SET, { active = want_active })
             r.pending_active = want_active
             logLine("[ctrl] auto-ctrl: reactor " .. nid ..
                   " -> " .. tostring(want_active) ..
@@ -613,7 +646,7 @@ local function buildDisplayPayload()
     }
 end
 
-local function refreshPanel(cfg)
+refreshPanel = function(cfg)
     if not runtime_ui then return end
 
     local reactor_count = 0
@@ -647,7 +680,24 @@ local function refreshPanel(cfg)
 end
 
 -- ── Message handlers ─────────────────────────────────────────────────────────────
+local function onNodeDiscovery(msg, cfg)
+    local payload = msg.payload or {}
+    local entry, change = rememberNode(msg.node_id, payload.role, msg.sender_id, payload)
+    if entry then
+        entry.unlinked = true
+        entry.adopted = false
+        entry.update_status = "unlinked"
+        entry.message = "Claim code " .. tostring(payload.claim_code or "------") .. " - select and adopt to link"
+        entry.controller_mismatch = false
+    end
+    reportNodeChange(entry, change)
+    refreshPanel(cfg)
+end
+
 local function onMatrixData(msg, cfg)
+    if not controller_link.validateNodeMessage(msg, logLine) then
+        return
+    end
     local entry, change = rememberNode(msg.node_id, "matrix", msg.sender_id, msg.payload)
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, "matrix-data")
@@ -662,6 +712,9 @@ local function onMatrixData(msg, cfg)
 end
 
 local function onReactorData(msg, cfg)
+    if not controller_link.validateNodeMessage(msg, logLine) then
+        return
+    end
     local nid = msg.node_id
     local entry, change = rememberNode(nid, "reactor", msg.sender_id, msg.payload)
     reportNodeChange(entry, change)
@@ -685,6 +738,9 @@ local function onReactorData(msg, cfg)
 end
 
 local function onPocketRequest(msg, cfg)
+    if not controller_link.validateNodeMessage(msg, logLine) then
+        return
+    end
     local entry, change = rememberNode(msg.node_id, "pocket", msg.sender_id, msg.payload)
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, "pocket-request")
@@ -697,12 +753,20 @@ local function onPocketRequest(msg, cfg)
     -- (ender modems broadcast on a channel; we include source computer ID so
     --  the pocket node can filter its own responses)
     payload.for_sender = msg.sender_id
-    net.send(net.MSG.POCKET_DATA, payload)
+    sendToNode(msg.node_id, msg.sender_id, net.MSG.POCKET_DATA, payload)
 end
 
 local function onNodeHello(msg, cfg)
     local payload = msg.payload or {}
     local entry, change = rememberNode(msg.node_id, payload.role, msg.sender_id, payload)
+    if entry then
+        entry.unlinked = false
+        entry.adopted = true
+        entry.message = nil
+        if entry.update_status == "unlinked" or entry.update_status == "adopting" then
+            entry.update_status = "online-current"
+        end
+    end
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, payload.status or "hello")
     blockMismatchedOperationalNode(entry, "node hello")
@@ -710,6 +774,9 @@ local function onNodeHello(msg, cfg)
 end
 
 local function onUpdateAck(msg, cfg)
+    if not controller_link.validateNodeMessage(msg, logLine) then
+        return
+    end
     if not net.isTargetedToSelf(msg) then return end
     local rollout = state.updates.rollout
     if not rollout or not rollout.current or msg.msg_id ~= rollout.current.msg_id then
@@ -728,7 +795,10 @@ end
 local function onUpdateStatus(msg, cfg)
     if not net.isTargetedToSelf(msg) then return end
     local payload = msg.payload or {}
-    if payload.phase == "check" and msg.msg_id ~= state.updates.last_check_id then
+    if not controller_link.validateNodeMessage(msg, logLine) then
+        return
+    end
+    if payload.phase == "check" and msg.msg_id ~= state.updates.last_check_ids[msg.node_id] then
         return
     end
 
@@ -828,12 +898,12 @@ local function createUpdateOffer(cfg, target_node_id)
     end
 
     for _, item in ipairs(queue) do
-        local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_OFFER, {
+        local entry = state.updates.nodes[item.node_id]
+        local _, _, msg_id = sendToNode(item.node_id, item.sender_id, net.MSG.UPDATE_OFFER, {
             desired_version = offer.latest_version,
             force = false,
-        }, item.node_id, item.sender_id)
+        })
         offer.msg_ids[item.node_id] = msg_id
-        local entry = state.updates.nodes[item.node_id]
         if entry then entry.update_status = "offered" end
     end
 
@@ -880,9 +950,9 @@ local function abortUpdateFlow(cfg)
 
     if state.updates.offer then
         for _, item in ipairs(state.updates.offer.queue) do
-            local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_ABORT, {
+            local _, _, msg_id = sendToNode(item.node_id, item.sender_id, net.MSG.UPDATE_ABORT, {
                 reason = "operator-cancelled",
-            }, item.node_id, item.sender_id)
+            })
             state.updates.last_abort_ids[item.node_id] = msg_id
             local entry = state.updates.nodes[item.node_id]
             if entry then entry.update_status = "aborted" end
@@ -901,9 +971,9 @@ local function abortUpdateFlow(cfg)
     if rollout then
         rollout.cancelled = true
         for _, item in ipairs(rollout.queue) do
-            local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_ABORT, {
+            local _, _, msg_id = sendToNode(item.node_id, item.sender_id, net.MSG.UPDATE_ABORT, {
                 reason = "operator-cancelled",
-            }, item.node_id, item.sender_id)
+            })
             state.updates.last_abort_ids[item.node_id] = msg_id
             local entry = state.updates.nodes[item.node_id]
             if entry then entry.update_status = "aborted" end
@@ -916,9 +986,9 @@ local function abortUpdateFlow(cfg)
         if rollout.current then
             local current = state.updates.nodes[rollout.current.node_id]
             if current and current.sender_id then
-                local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_ABORT, {
+                local _, _, msg_id = sendToEntry(current, net.MSG.UPDATE_ABORT, {
                     reason = "operator-cancelled",
-                }, current.node_id, current.sender_id)
+                })
                 state.updates.last_abort_ids[current.node_id] = msg_id
                 current.update_status = "abort-requested"
                 aborted_any = true
@@ -949,20 +1019,31 @@ local function adoptReplacement(cfg, node_id)
         logLine("[ctrl] Node not found: " .. tostring(node_id), colors.orange)
         return false
     end
-    if not entry.identity_conflict then
-        logLine("[ctrl] Node is not marked as conflicted", colors.orange)
+    if not entry.unlinked then
+        logLine("[ctrl] Node is not waiting for adoption", colors.orange)
         return false
     end
 
-    entry.identity_conflict = false
-    entry.previous_sender_id = nil
-    entry.replaced_at = now()
-    if entry.controller_mismatch then
-        logLine("[ctrl] Replacement adopted, but controller ID still does not match", colors.orange)
-    else
-        logLine("[ctrl] Replacement adopted for " .. tostring(node_id), colors.lime)
+    if type(entry.claim_code) ~= "string" or entry.claim_code == "" then
+        logLine("[ctrl] Node has no active claim code; wait for its next discovery heartbeat", colors.orange)
+        return false
     end
-    reconcileNode(entry, cfg, "adopted")
+
+    local token = controller_link.issueNodeToken(entry.node_id, entry.sender_id, entry.role)
+    if not token then
+        logLine("[ctrl] Failed to issue node token", colors.red)
+        return false
+    end
+
+    sendToEntry(entry, net.MSG.ADOPT_REQUEST, {
+        claim_code = entry.claim_code,
+        controller_token = token,
+    })
+    entry.controller_id = os.getComputerID()
+    entry.controller_mismatch = false
+    entry.update_status = "adopting"
+    entry.message = "Adoption sent; waiting for secure hello"
+    logLine("[ctrl] Adoption request sent to " .. tostring(node_id) .. " (claim " .. tostring(entry.claim_code) .. ")", colors.lime)
     refreshPanel(cfg)
     return true
 end
@@ -986,11 +1067,19 @@ performUpdateCheck = function(cfg, force)
     end
 
     logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ", policy " .. tostring(state.updates.rollout_policy or "controller-first") .. ")", colors.lightBlue)
-    local _, _, msg_id = net.send(net.MSG.UPDATE_CHECK, { desired_version = info.latest_version, force = false })
-    state.updates.last_check_id = msg_id
+    state.updates.last_check_ids = {}
+    for node_id, entry in pairs(state.updates.nodes) do
+        if node_id ~= cfg.get("node_id") and entry.sender_id and not entry.unlinked then
+            local _, _, msg_id = sendToEntry(entry, net.MSG.UPDATE_CHECK, {
+                desired_version = info.latest_version,
+                force = false,
+            })
+            state.updates.last_check_ids[node_id] = msg_id
+        end
+    end
     state.updates.check_deadline = now() + CHECK_TIMEOUT
     for node_id, entry in pairs(state.updates.nodes) do
-        if node_id ~= cfg.get("node_id") then
+        if node_id ~= cfg.get("node_id") and not entry.unlinked then
             entry.needs_update = nil
             if not isStale(entry.last_seen or 0) then
                 entry.update_status = "checking"
@@ -1012,7 +1101,7 @@ local function startRollout(cfg)
 
     local queue = {}
     for node_id, entry in pairs(state.updates.nodes) do
-        if node_id ~= cfg.get("node_id") and entry.role ~= "controller" and entry.sender_id then
+        if node_id ~= cfg.get("node_id") and entry.role ~= "controller" and entry.sender_id and not entry.unlinked then
             if entry.controller_mismatch then
                 entry.update_status = "wrong-controller"
             elseif entry.identity_conflict then
@@ -1087,6 +1176,7 @@ end
 local function tickRollout(cfg)
     if state.updates.check_deadline and now() >= state.updates.check_deadline then
         state.updates.check_deadline = nil
+        state.updates.last_check_ids = {}
         for node_id, entry in pairs(state.updates.nodes) do
             if node_id ~= cfg.get("node_id") and entry.update_status == "checking" then
                 entry.update_status = isStale(entry.last_seen or 0) and "offline" or "no-check-response"
@@ -1145,10 +1235,10 @@ local function tickRollout(cfg)
     end
 
     logLine("[ctrl] Starting update on " .. tostring(nextNode.node_id) .. " (" .. tostring(nextNode.role) .. ")", colors.lightBlue)
-    local _, _, msg_id = net.sendTargeted(net.MSG.UPDATE_START, {
+    local _, _, msg_id = sendToNode(nextNode.node_id, nextNode.sender_id, net.MSG.UPDATE_START, {
         desired_version = rollout.latest_version,
         force = false,
-    }, nextNode.node_id, nextNode.sender_id)
+    })
 
     live.update_status = "starting"
     rollout.queued[nextNode.node_id] = nil
@@ -1209,7 +1299,10 @@ end
 
 -- ── Manual reactor toggle (called from HUD) ──────────────────────────────────────
 function controller.setReactorActive(node_id, active)
-    net.send(net.MSG.CMD_REACTOR_SET, { active = active })
+    local entry = state.updates.nodes[node_id]
+    if entry and entry.sender_id then
+        sendToEntry(entry, net.MSG.CMD_REACTOR_SET, { active = active })
+    end
     logLine("[ctrl] manual CMD_REACTOR_SET -> " .. tostring(active) ..
           " (node: " .. tostring(node_id) .. ")", colors.lightBlue)
 end
@@ -1244,7 +1337,7 @@ function controller.run(cfg)
     -- Open network
     local modem = pmgr.find(MODEM_TYPE) or pmgr.find("modem")
     if not modem then error("No ender modem found.") end
-    net.open(modem, cfg.get("channel"), cfg.get("shared_secret"), cfg.get("node_id"))
+    controller_link.openControllerNetwork(cfg, modem)
 
     -- Find speaker (optional)
     local speaker = nil
@@ -1274,6 +1367,7 @@ function controller.run(cfg)
     local function net_loop()
         while true do
             local msg = net.receive(DISPLAY_INTERVAL + 1, {
+                net.MSG.NODE_DISCOVERY,
                 net.MSG.NODE_HELLO,
                 net.MSG.MATRIX_DATA,
                 net.MSG.REACTOR_DATA,
@@ -1282,7 +1376,8 @@ function controller.run(cfg)
                 net.MSG.UPDATE_STATUS,
             })
             if msg then
-                if     msg.type == net.MSG.NODE_HELLO     then onNodeHello(msg, cfg)
+                if     msg.type == net.MSG.NODE_DISCOVERY then onNodeDiscovery(msg, cfg)
+                elseif msg.type == net.MSG.NODE_HELLO     then onNodeHello(msg, cfg)
                 elseif msg.type == net.MSG.MATRIX_DATA    then onMatrixData(msg, cfg)
                 elseif msg.type == net.MSG.REACTOR_DATA   then onReactorData(msg, cfg)
                 elseif msg.type == net.MSG.POCKET_REQUEST then onPocketRequest(msg, cfg)
@@ -1300,8 +1395,12 @@ function controller.run(cfg)
             local _, id = os.pullEvent("timer")
             if id == display_timer then
                 refreshSelfEntry(cfg, "online")
-                -- Periodic DISPLAY_UPDATE broadcast
-                net.send(net.MSG.DISPLAY_UPDATE, buildDisplayPayload())
+                local payload = buildDisplayPayload()
+                for _, entry in pairs(state.updates.nodes) do
+                    if entry.role == "display" and entry.sender_id and not isStale(entry.last_seen or 0) and not entry.controller_mismatch then
+                        sendToEntry(entry, net.MSG.DISPLAY_UPDATE, payload)
+                    end
+                end
                 -- Refresh staleness-based alerts
                 updateAlerts(cfg)
                 refreshPanel(cfg)

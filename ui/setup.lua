@@ -1,7 +1,7 @@
 -- ui/setup.lua
 -- Text-mode first-run wizard. No Basalt dependency.
--- Collects role, node_id, channel, controller_id, monitor side, speaker side,
--- shared_secret, and controller-specific threshold/auto-ctrl/update-check settings.
+-- Collects role, node_id, channel, hardware bindings, and controller-specific
+-- threshold/auto-ctrl/update-check settings.
 -- Writes enmon.cfg and returns the loaded config module.
 
 local config = require("lib/config")
@@ -227,19 +227,12 @@ function setup.run()
     local channel = promptNumber("Network channel", 42, 1, 65535)
     config.set("channel", channel)
 
-    -- Shared secret
-    print()
-    term.setTextColor(colors.yellow)
-    print("  All nodes must share the same secret for HMAC authentication.")
-    term.setTextColor(colors.white)
-    local secret = prompt("Shared secret", "enmon_default")
-    config.set("shared_secret", secret)
-
-    -- Controller ID (non-controller nodes need to know where to send data)
     if role ~= "controller" then
         print()
-        local ctrl_id = promptNumber("Controller computer ID", nil, 0)
-        config.set("controller_id", ctrl_id)
+        term.setTextColor(colors.yellow)
+        print("  This node will appear as unlinked on the chosen channel until a controller adopts it.")
+        print("  No controller ID or shared secret is required during setup.")
+        term.setTextColor(colors.white)
     end
 
     -- Monitor side (controller + display)

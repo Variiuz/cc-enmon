@@ -133,6 +133,16 @@
         "Persist node update offer/in-progress state and require configured controller_id for remote update control",
         "Make updater activation more crash-resilient with backups and stricter sentinel recovery"
       ]
+    },
+    {
+      "version": "0.3.8",
+      "manifest_revision": 4,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Adoption-based onboarding flow",
+        "Development branch test release"
+      ]
     }
   ]
 }

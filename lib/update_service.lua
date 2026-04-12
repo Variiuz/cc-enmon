@@ -2,6 +2,7 @@
 -- Shared node-side handling for controller-coordinated updates.
 
 local net = require("lib/network")
+local controller_link = require("lib/controller_link")
 local updater = require("lib/updater")
 local version = require("lib/version")
 
@@ -11,6 +12,7 @@ local UPDATER_SENTINEL_PATH = ".enmon_update_state"
 local UPDATER_STAGE_DIR = ".enmon_update_stage"
 local pending_offer = nil
 local update_in_progress = false
+local active_cfg = nil
 
 local function readServiceState()
     if not fs.exists(SERVICE_STATE_PATH) then
@@ -88,7 +90,7 @@ local function logLine(logger, message)
 end
 
 local function sendReply(msgType, payload, sourceMsg)
-    net.sendTargeted(msgType, payload, sourceMsg.node_id, sourceMsg.sender_id, nil, sourceMsg.msg_id)
+    controller_link.sendNodeTargeted(active_cfg or {}, msgType, payload, sourceMsg.node_id, sourceMsg.sender_id, sourceMsg.msg_id)
 end
 
 function service.handleMessage(cfg, msg, logger)
@@ -104,17 +106,17 @@ function service.handleMessage(cfg, msg, logger)
         return false
     end
 
+    active_cfg = cfg
+
     local role = cfgGet(cfg, "role")
-    local controllerId = cfgGet(cfg, "controller_id")
     local currentVersion = version.getVersion()
 
-    if role ~= "controller" and controllerId == nil then
-        logLine(logger, "[update] Ignoring update command because controller_id is not configured")
+    if role ~= "controller" and not controller_link.isAdopted(cfg) then
+        logLine(logger, "[update] Ignoring update command because this node has not been adopted")
         return true
     end
 
-    if role ~= "controller" and controllerId ~= nil and msg.sender_id ~= controllerId then
-        logLine(logger, "[update] Ignoring update command from unknown sender: " .. tostring(msg.sender_id))
+    if not controller_link.validateControllerMessage(cfg, msg, logger) then
         return true
     end
 

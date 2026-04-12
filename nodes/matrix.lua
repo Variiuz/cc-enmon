@@ -3,15 +3,17 @@
 -- Wraps the Mekanism induction_port peripheral, polls data every 2 seconds,
 -- and broadcasts MATRIX_DATA to the network.
 --
--- Expected config keys: node_id, channel, shared_secret
+-- Expected config keys: node_id, channel, optional adopted controller linkage
 -- Hardware: ender modem + wired connection to induction_port
 
 local net  = require("lib/network")
+local controller_link = require("lib/controller_link")
 local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
 local runtime_actions = require("lib/runtime_actions")
 local update_service = require("lib/update_service")
 local util = require("lib/util")
+local version = require("lib/version")
 local runtime_panel = require("ui/runtime_panel")
 
 local POLL_INTERVAL = 2   -- seconds between broadcasts
@@ -30,6 +32,7 @@ local function updatePanel(cfg, status, detail, color)
     if not runtime_ui then return end
     runtime_ui.setSummary({
         { "Node", tostring(cfg.get("node_id")) },
+        { "Version", tostring(version.getVersion()) },
         { "Channel", tostring(cfg.get("channel")) },
         { "Computer", tostring(os.getComputerID()) },
         { "Status", status or "Idle", color or colors.black, colors.white },
@@ -46,8 +49,10 @@ end
 local function findInductionPort()
     for _, t in ipairs(MATRIX_TYPES) do
         local p = pmgr.find(t)
-        -- Confirm it actually responds (peripheral.find can return stale entries)
-        if p and pcall(p.getEnergy, p) then return p end
+        if p then
+            local energy = pmgr.call(p, "getEnergy")
+            if energy ~= nil then return p end
+        end
     end
     -- Method-based fallback: scan everything, require getEnergy + some capacity method
     for _, name in ipairs(peripheral.getNames()) do
@@ -55,7 +60,7 @@ local function findInductionPort()
         if ok and p and type(p.getEnergy) == "function" then
             local has_cap = type(p.getMaxEnergy)      == "function"
                          or type(p.getEnergyCapacity) == "function"
-            local responds = pcall(p.getEnergy, p)
+            local responds = pmgr.call(p, "getEnergy") ~= nil
             if has_cap and responds then
                 logLine("[matrix] Found induction port via method scan: " .. name, colors.lightBlue)
                 return p
@@ -87,7 +92,7 @@ local function openNet(cfg)
     if not modem then
         error("No ender modem found. Attach one and reboot.")
     end
-    net.open(modem, cfg.get("channel"), cfg.get("shared_secret"), cfg.get("node_id"))
+    controller_link.openNodeNetwork(cfg, modem)
 end
 
 local function pollMatrix(port)
@@ -114,13 +119,14 @@ local function pollMatrix(port)
 end
 
 function matrix.run(cfg)
+    local claim_code = controller_link.newClaimCode()
     runtime_ui = runtime_panel.new("Matrix Node")
     runtime_ui.setHint("F2 Config")
     logLine("[matrix] Starting matrix node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
     openNet(cfg)
-    identity.announce(cfg, "matrix", "startup")
+    identity.announce(cfg, "matrix", controller_link.isAdopted(cfg) and "startup" or "unlinked", { claim_code = claim_code })
 
     -- Wait for the induction port to become available
     logLine("[matrix] Waiting for induction port...", colors.orange)
@@ -141,9 +147,13 @@ function matrix.run(cfg)
 
             if data then
                 consecutive_errors = 0
-                data = identity.decorateTelemetry("matrix", data)
-                net.send(net.MSG.MATRIX_DATA, data)
-                updatePanel(cfg, "Online", util.formatPercent(util.fillFraction(data.energy, data.max_energy)), colors.lime)
+                data = identity.decorateTelemetry(cfg, "matrix", data)
+                if data then
+                    controller_link.sendNodeMessage(cfg, net.MSG.MATRIX_DATA, data)
+                    updatePanel(cfg, "Online", util.formatPercent(util.fillFraction(data.energy, data.max_energy)), colors.lime)
+                else
+                    updatePanel(cfg, "Unlinked", "Claim " .. claim_code, colors.orange)
+                end
             else
                 consecutive_errors = consecutive_errors + 1
                 logLine("[matrix] Poll error (" .. consecutive_errors .. "): " .. tostring(err), colors.red)
@@ -167,12 +177,27 @@ function matrix.run(cfg)
 
     local function command_loop()
         while true do
-            local msg = net.receive(nil, { net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
+            local msg = net.receive(nil, { net.MSG.ADOPT_REQUEST, net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
             if msg then
-                update_service.handleMessage(cfg, msg, function(message)
+                if controller_link.handleAdoptRequest(cfg, msg, claim_code, function(message)
                     logLine(message, colors.lightBlue)
-                end)
+                end, function()
+                    identity.announce(cfg, "matrix", "adopted")
+                    updatePanel(cfg, "Adopted", "Controller " .. tostring(cfg.get("controller_id")), colors.lime)
+                end) then
+                else
+                    update_service.handleMessage(cfg, msg, function(message)
+                        logLine(message, colors.lightBlue)
+                    end)
+                end
             end
+        end
+    end
+
+    local function hello_loop()
+        while true do
+            os.sleep(10)
+            identity.announce(cfg, "matrix", controller_link.isAdopted(cfg) and "heartbeat" or "unlinked", { claim_code = claim_code })
         end
     end
 
@@ -189,7 +214,7 @@ function matrix.run(cfg)
         end
     end
 
-    parallel.waitForAny(poll_loop, command_loop, key_loop)
+    parallel.waitForAny(poll_loop, command_loop, hello_loop, key_loop)
 
     if runtime_action == "config" then
         runtime_actions.openConfigEditor(cfg, logLine)

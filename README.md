@@ -12,6 +12,9 @@ installer
 Run on each computer. Pick a role, follow the wizard.
 
 If `enmon.cfg` already exists, the installer now detects it and lets you reuse that config as a starting point before reviewing each page again.
+
+Controller setup now only needs the node identity, channel, and controller-specific hardware/settings. New non-controller nodes on the same channel come up as `unlinked`, advertise a short claim code, and must be explicitly adopted from the controller before they start sending operational data.
+
 ## Node Roles
 
 | Role | Hardware needed |
@@ -22,7 +25,7 @@ If `enmon.cfg` already exists, the installer now detects it and lets you reuse t
 | **Display Node** | Computer + Monitor + Ender Modem |
 | **Pocket Computer** | Pocket Computer + Ender Modem |
 
-All nodes must share the same **channel** and **shared secret** configured during setup.
+All nodes that should work together must share the same **channel**. Non-controller nodes no longer need a manually entered shared secret or controller ID during setup.
 
 ## Features
 
@@ -30,11 +33,13 @@ All nodes must share the same **channel** and **shared secret** configured durin
 - Per-reactor status, output rate, and on/off control
 - Automatic reactor on/off based on configurable matrix fill thresholds
 - Speaker alerts for low energy / disconnected nodes
-- HMAC-authenticated messages — foreign packets are silently dropped
+- Explicit controller adoption flow for new nodes
+- Per-node token-authenticated operational messages after adoption
 - Responsive UI (adapts to monitor size)
 - Peripheral check during setup wizard
 - Automatic config schema migration for older `enmon.cfg` files on load/save
 - Hash-based delta updates using manifest SHA-256 file hashes
+- Automatic controller-issued node tokens after first pairing
 
 ## Hotkeys
 
@@ -64,6 +69,8 @@ Controller terminal only:
 - `enmon-cli update force` re-downloads and reapplies files even when the version number did not change.
 - `enmon-cli reinstall` is the explicit local alias of `update force`.
 - `enmon-cli verify` compares local files against the remote manifest hashes and reports missing, changed, or stale managed files.
+- `enmon-cli update` and `reinstall` prompt before applying changes; pass `--yes` to skip confirmation.
+- `tools/update-recovery-harness.lua` exercises interrupted update recovery and stale managed-file cleanup inside a temporary test workspace.
 
 Normal updates trigger on a newer release label. A same-version hotfix is published by incrementing `manifest_revision`, which produces labels such as `0.3.8+r1`.
 

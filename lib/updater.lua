@@ -12,6 +12,13 @@ local MANAGED_STATE_PATH = ".enmon_managed_files"
 local BACKUP_DIR = ".enmon_update_backup"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
 
+updater.paths = {
+    stage_dir = STAGE_DIR,
+    sentinel_path = SENTINEL_PATH,
+    managed_state_path = MANAGED_STATE_PATH,
+    backup_dir = BACKUP_DIR,
+}
+
 local function log(logger, message)
     if type(logger) == "function" then
         logger(message)
@@ -34,6 +41,10 @@ local function writeFile(path, content)
     file.write(content)
     file.close()
     return true
+end
+
+local function getPath(name)
+    return updater.paths[name]
 end
 
 local function readHttp(url)
@@ -120,9 +131,10 @@ local function uniquePaths(entries)
 end
 
 local function readSentinel()
-    if not fs.exists(SENTINEL_PATH) then return nil end
+    local sentinelPath = getPath("sentinel_path")
+    if not fs.exists(sentinelPath) then return nil end
 
-    local file = fs.open(SENTINEL_PATH, "r")
+    local file = fs.open(sentinelPath, "r")
     if not file then return nil, "unable to open update state" end
     local raw = file.readAll()
     file.close()
@@ -135,13 +147,14 @@ local function readSentinel()
 end
 
 local function writeSentinel(state)
-    return writeFile(SENTINEL_PATH, textutils.serialize(state))
+    return writeFile(getPath("sentinel_path"), textutils.serialize(state))
 end
 
 local function readManagedFiles()
-    if not fs.exists(MANAGED_STATE_PATH) then return {} end
+    local managedStatePath = getPath("managed_state_path")
+    if not fs.exists(managedStatePath) then return {} end
 
-    local file = fs.open(MANAGED_STATE_PATH, "r")
+    local file = fs.open(managedStatePath, "r")
     if not file then return {} end
     local raw = file.readAll()
     file.close()
@@ -155,7 +168,7 @@ local function readManagedFiles()
 end
 
 local function writeManagedFiles(paths)
-    return writeFile(MANAGED_STATE_PATH, textutils.serialize({ files = paths or {} }))
+    return writeFile(getPath("managed_state_path"), textutils.serialize({ files = paths or {} }))
 end
 
 local function backupPath(root, relPath)
@@ -243,9 +256,11 @@ function updater.checkForUpdate(role, base_url, force)
 end
 
 local function stageFiles(entries, logger, force)
-    clearPath(STAGE_DIR)
-    clearPath(BACKUP_DIR)
-    fs.makeDir(STAGE_DIR)
+    local stageDir = getPath("stage_dir")
+    local backupDir = getPath("backup_dir")
+    clearPath(stageDir)
+    clearPath(backupDir)
+    fs.makeDir(stageDir)
 
     local stagedPaths = {}
     for _, entry in ipairs(entries) do
@@ -261,12 +276,12 @@ local function stageFiles(entries, logger, force)
         log(logger, "Downloading " .. entry.path)
         local raw, err = readHttp(entry.url)
         if not raw then
-            clearPath(STAGE_DIR)
+            clearPath(stageDir)
             return nil, "Failed to download " .. entry.path .. ": " .. tostring(err)
         end
 
         if entry.hash and not contentMatchesHash(raw, entry.hash) then
-            clearPath(STAGE_DIR)
+            clearPath(stageDir)
             return nil, "Downloaded hash mismatch for " .. entry.path
         end
 
@@ -277,10 +292,10 @@ local function stageFiles(entries, logger, force)
             end
         end
 
-        local stagePath = fs.combine(STAGE_DIR, entry.path)
+        local stagePath = fs.combine(stageDir, entry.path)
         local ok, writeErr = writeFile(stagePath, raw)
         if not ok then
-            clearPath(STAGE_DIR)
+            clearPath(stageDir)
             return nil, writeErr
         end
         stagedPaths[#stagedPaths + 1] = entry.path
@@ -297,7 +312,7 @@ function updater.finalizeSwap(state, logger)
     if type(state.stage_dir) ~= "string" or type(state.files) ~= "table" or type(state.managed_files) ~= "table" then
         return false, "update state incomplete"
     end
-    state.backup_dir = state.backup_dir or BACKUP_DIR
+    state.backup_dir = state.backup_dir or getPath("backup_dir")
     if type(state.backup_dir) ~= "string" then
         return false, "update backup directory missing"
     end
@@ -363,7 +378,7 @@ function updater.finalizeSwap(state, logger)
         return false, err
     end
     clearPath(state.backup_dir)
-    clearPath(SENTINEL_PATH)
+    clearPath(getPath("sentinel_path"))
     clearPath(state.stage_dir)
     return true
 end
@@ -408,8 +423,8 @@ function updater.applyLocalUpdate(options)
     if not stagedPaths then return false, stageErr end
 
     local state = {
-        stage_dir = STAGE_DIR,
-        backup_dir = BACKUP_DIR,
+        stage_dir = getPath("stage_dir"),
+        backup_dir = getPath("backup_dir"),
         files = stagedPaths,
         managed_files = (function()
             local result = {}
@@ -424,7 +439,7 @@ function updater.applyLocalUpdate(options)
     }
     local ok, sentinelErr = writeSentinel(state)
     if not ok then
-        clearPath(STAGE_DIR)
+        clearPath(getPath("stage_dir"))
         return false, sentinelErr
     end
 
@@ -437,6 +452,15 @@ function updater.applyLocalUpdate(options)
         from_version = info.current_version,
         to_version = info.latest_version,
         forced = force,
+    }
+end
+
+function updater.overridePaths(paths)
+    updater.paths = {
+        stage_dir = paths and paths.stage_dir or STAGE_DIR,
+        sentinel_path = paths and paths.sentinel_path or SENTINEL_PATH,
+        managed_state_path = paths and paths.managed_state_path or MANAGED_STATE_PATH,
+        backup_dir = paths and paths.backup_dir or BACKUP_DIR,
     }
 end
 

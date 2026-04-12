@@ -4,6 +4,8 @@ param(
 
     [string]$Version,
 
+    [string]$BaseUrl,
+
     [switch]$Hotfix,
 
     [string]$Date = (Get-Date -Format 'yyyy-MM-dd'),
@@ -196,6 +198,7 @@ function Set-ManifestRevision {
 
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $currentVersion = [string]$manifest.version
+$currentBaseUrl = [string]$manifest.base_url
 $currentManifestRevision = 0
 if ($manifest.PSObject.Properties.Name -contains 'manifest_revision') {
     $currentManifestRevision = [int]$manifest.manifest_revision
@@ -213,16 +216,29 @@ elseif (-not $Version) {
 }
 
 $manifestRevision = if ($Hotfix) { $currentManifestRevision + 1 } else { 0 }
+$effectiveBaseUrl = if ($PSBoundParameters.ContainsKey('BaseUrl') -and $BaseUrl) { $BaseUrl } else { $currentBaseUrl }
+
+if (-not $effectiveBaseUrl) {
+    throw 'A manifest base_url is required.'
+}
+
+if (-not $effectiveBaseUrl.EndsWith('/')) {
+    $effectiveBaseUrl = $effectiveBaseUrl + '/'
+}
 
 $manifest.version = $Version
+$manifest.base_url = $effectiveBaseUrl
 Set-ManifestRevision -Manifest $manifest -ManifestRevision $manifestRevision
 
 Update-FileVersionString -Path $installerPath -Pattern 'local VERSION\s*=\s*composeReleaseLabel\(readManifestValue\("version", "[^"]+"\), readManifestNumber\("manifest_revision", \d+\)\)' -Replacement ('local VERSION    = composeReleaseLabel(readManifestValue("version", "{0}"), readManifestNumber("manifest_revision", {1}))' -f $Version, $manifestRevision)
+Update-FileVersionString -Path $installerPath -Pattern 'local BASE_URL\s*=\s*readManifestValue\("base_url", "[^"]+"\)' -Replacement ('local BASE_URL   = readManifestValue("base_url", "{0}")' -f $effectiveBaseUrl)
 Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*version = "[^"]+",' -Replacement ('    version = "{0}",' -f $Version)
 Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*manifest_revision = \d+,' -Replacement ('    manifest_revision = {0},' -f $manifestRevision)
+Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*base_url = "[^"]+",' -Replacement ('    base_url = "{0}",' -f $effectiveBaseUrl)
 
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $manifest.version = $Version
+$manifest.base_url = $effectiveBaseUrl
 Set-ManifestRevision -Manifest $manifest -ManifestRevision $manifestRevision
 Update-ManifestHashes -Manifest $manifest -RepoRoot $repoRoot -BasaltUrl $basaltUrl
 $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath

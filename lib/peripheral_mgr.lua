@@ -39,7 +39,11 @@ end
 -- Automatically returns nil, "disconnected" if the peripheral is no longer present.
 function mgr.call(p, method, ...)
     if not p then return nil, "no peripheral" end
-    local ok, result = pcall(p[method], p, ...)
+    local fn = p[method]
+    if type(fn) ~= "function" then
+        return nil, "missing method: " .. tostring(method)
+    end
+    local ok, result = pcall(fn, ...)
     if ok then
         return result, nil
     else

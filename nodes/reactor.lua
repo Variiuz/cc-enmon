@@ -4,14 +4,16 @@
 -- CMD_REACTOR_SET commands received from the Controller.
 -- No auto-control logic lives here — all authority is on the Controller.
 --
--- Expected config keys: node_id, channel, controller_id, shared_secret
+-- Expected config keys: node_id, channel, optional adopted controller linkage
 -- Hardware: ender modem + wired connection to reactor CC port
 
 local net  = require("lib/network")
+local controller_link = require("lib/controller_link")
 local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
 local runtime_actions = require("lib/runtime_actions")
 local update_service = require("lib/update_service")
+local version = require("lib/version")
 local runtime_panel = require("ui/runtime_panel")
 
 local POLL_INTERVAL  = 2   -- seconds between broadcasts
@@ -32,6 +34,7 @@ local function updatePanel(cfg, status, detail, color)
     if not runtime_ui then return end
     runtime_ui.setSummary({
         { "Node", tostring(cfg.get("node_id")) },
+        { "Version", tostring(version.getVersion()) },
         { "Channel", tostring(cfg.get("channel")) },
         { "Controller", tostring(cfg.get("controller_id") or "--") },
         { "Status", status or "Idle", color or colors.black, colors.white },
@@ -72,7 +75,7 @@ end
 local function openNet(cfg)
     local modem = findModem()
     if not modem then error("No ender modem found.") end
-    net.open(modem, cfg.get("channel"), cfg.get("shared_secret"), cfg.get("node_id"))
+    controller_link.openNodeNetwork(cfg, modem)
 end
 
 local function pollReactor(port)
@@ -103,13 +106,14 @@ local function applyCommand(port, msg)
 end
 
 function reactor.run(cfg)
+    local claim_code = controller_link.newClaimCode()
     runtime_ui = runtime_panel.new("Reactor Node")
     runtime_ui.setHint("F2 Config")
     logLine("[reactor] Starting reactor node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
     openNet(cfg)
-    identity.announce(cfg, "reactor", "startup")
+    identity.announce(cfg, "reactor", controller_link.isAdopted(cfg) and "startup" or "unlinked", { claim_code = claim_code })
 
     updatePanel(cfg, "Waiting", "Reactor peripheral", colors.orange)
     local port = waitForReactor()
@@ -128,10 +132,14 @@ function reactor.run(cfg)
             local data, err = pollReactor(port)
             if data then
                 consecutive_errors = 0
-                data = identity.decorateTelemetry("reactor", data)
-                net.send(net.MSG.REACTOR_DATA, data)
-                local detail = (data.active and "ON" or "OFF") .. "  " .. tostring(data.produced_last_t or 0) .. " RF/t"
-                updatePanel(cfg, "Online", detail, colors.lime)
+                data = identity.decorateTelemetry(cfg, "reactor", data)
+                if data then
+                    controller_link.sendNodeMessage(cfg, net.MSG.REACTOR_DATA, data)
+                    local detail = (data.active and "ON" or "OFF") .. "  " .. tostring(data.produced_last_t or 0) .. " RF/t"
+                    updatePanel(cfg, "Online", detail, colors.lime)
+                else
+                    updatePanel(cfg, "Unlinked", "Claim " .. claim_code, colors.orange)
+                end
             else
                 consecutive_errors = consecutive_errors + 1
                 logLine("[reactor] Poll error (" .. consecutive_errors .. "): " .. tostring(err), colors.red)
@@ -159,11 +167,16 @@ function reactor.run(cfg)
 
     local function cmd_loop()
         while true do
-            local msg, _ = net.receive(nil, { net.MSG.CMD_REACTOR_SET, net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
+            local msg, _ = net.receive(nil, { net.MSG.CMD_REACTOR_SET, net.MSG.ADOPT_REQUEST, net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
             if msg then
-                if msg.type == net.MSG.CMD_REACTOR_SET then
-                    local ctrl_id = cfg.get("controller_id")
-                    if ctrl_id == nil or msg.sender_id == ctrl_id then
+                if controller_link.handleAdoptRequest(cfg, msg, claim_code, function(message)
+                    logLine(message, colors.lightBlue)
+                end, function()
+                    identity.announce(cfg, "reactor", "adopted")
+                    updatePanel(cfg, "Adopted", "Controller " .. tostring(cfg.get("controller_id")), colors.lime)
+                end) then
+                elseif msg.type == net.MSG.CMD_REACTOR_SET then
+                    if controller_link.validateControllerMessage(cfg, msg, logLine) then
                         applyCommand(port, msg)
                     else
                         logLine("[reactor] Ignoring CMD from unknown sender: " .. tostring(msg.sender_id), colors.red)
@@ -190,9 +203,16 @@ function reactor.run(cfg)
         end
     end
 
+    local function hello_loop()
+        while true do
+            os.sleep(10)
+            identity.announce(cfg, "reactor", controller_link.isAdopted(cfg) and "heartbeat" or "unlinked", { claim_code = claim_code })
+        end
+    end
+
     -- parallel.waitForAll keeps all three coroutines running; if one errors
     -- the others terminate, and the error propagates up to enmon.lua's pcall.
-    parallel.waitForAny(timer_loop, poll_loop, cmd_loop, key_loop)
+    parallel.waitForAny(timer_loop, poll_loop, cmd_loop, hello_loop, key_loop)
 
     if runtime_action == "config" then
         runtime_actions.openConfigEditor(cfg, logLine)
