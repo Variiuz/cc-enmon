@@ -62,6 +62,41 @@ local function cloneTable(source)
     return copy
 end
 
+local function canonicalValue(value)
+    local kind = type(value)
+    if kind == "nil" then
+        return "null"
+    elseif kind == "boolean" or kind == "number" then
+        return tostring(value)
+    elseif kind == "string" then
+        return string.format("%q", value)
+    elseif kind ~= "table" then
+        return string.format("%q", tostring(value))
+    end
+
+    local keys = {}
+    for key in pairs(value) do
+        keys[#keys + 1] = key
+    end
+    table.sort(keys, function(left, right)
+        local leftType = type(left)
+        local rightType = type(right)
+        if leftType == rightType then
+            if leftType == "number" then
+                return left < right
+            end
+            return tostring(left) < tostring(right)
+        end
+        return leftType < rightType
+    end)
+
+    local parts = {}
+    for _, key in ipairs(keys) do
+        parts[#parts + 1] = canonicalValue(key) .. ":" .. canonicalValue(value[key])
+    end
+    return "{" .. table.concat(parts, ",") .. "}"
+end
+
 -- Open the ender modem and configure channel + secret.
 -- modem: peripheral object (already wrapped)
 -- channel: number
@@ -99,7 +134,7 @@ local function makeLegacyTag(secret, msg_type, sender_id, payload, target_node_i
 end
 
 local function makeTag(secret, msg_type, sender_id, node_id, payload, target_node_id, target_sender_id, msg_id)
-    local data = textutils.serialize({
+    local data = canonicalValue({
         type = msg_type,
         sender_id = sender_id,
         node_id = node_id,
