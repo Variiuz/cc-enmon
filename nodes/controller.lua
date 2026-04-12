@@ -50,6 +50,7 @@ local state = {
     updates  = {
         controller_version = version.getVersion(),
         latest_version = nil,
+        rollout_policy = version.getRolloutPolicy(),
         nodes = {},
         last_check_id = nil,
         check_deadline = nil,
@@ -267,6 +268,7 @@ local function effectiveNodeStatus(entry)
     if entry.update_status and entry.update_status ~= "" then
         return entry.update_status
     end
+    if entry.node_status == "version-mismatch" then return "version-mismatch" end
     if entry.needs_update == false then return "online-current" end
     return "online"
 end
@@ -290,6 +292,38 @@ local function controllerEntry(cfg)
     return state.updates.nodes[cfg.get("node_id")]
 end
 
+local function rolloutPolicy()
+    return state.updates.rollout_policy or version.getRolloutPolicy() or "controller-first"
+end
+
+local function nodeVersionCompatible(entry)
+    if not entry or entry.role == "controller" then
+        return true
+    end
+    if rolloutPolicy() == "node-safe" then
+        return true
+    end
+    if not entry.local_version or not state.updates.controller_version then
+        return false
+    end
+    return compareVersion(entry.local_version, state.updates.controller_version) == 0
+end
+
+local function blockMismatchedOperationalNode(entry, kind)
+    if not entry or nodeVersionCompatible(entry) then
+        return false
+    end
+
+    local blocked_note = "Blocked until updated to controller version " .. tostring(state.updates.controller_version)
+    local changed = entry.message ~= blocked_note or entry.node_status ~= "version-mismatch"
+    entry.node_status = "version-mismatch"
+    entry.message = blocked_note
+    if changed then
+        logLine("[ctrl] Blocking " .. tostring(kind or entry.role or "node") .. " from version-mismatched node " .. tostring(entry.node_id) .. " (" .. tostring(entry.local_version or "unknown") .. " != " .. tostring(state.updates.controller_version) .. ")", colors.orange)
+    end
+    return true
+end
+
 local function controllerNeedsReviewUpdate(cfg)
     local entry = controllerEntry(cfg)
     if entry and entry.needs_update == true then
@@ -299,6 +333,10 @@ local function controllerNeedsReviewUpdate(cfg)
 end
 
 local function ensureControllerCurrentForRemoteUpdates(cfg)
+    if rolloutPolicy() ~= "controller-first" then
+        return true
+    end
+
     if not state.updates.latest_version then
         local ok = performUpdateCheck(cfg, false)
         if not ok then
@@ -398,6 +436,7 @@ local function buildUpdateSnapshot()
     return {
         controller_version = updates.controller_version,
         latest_version = updates.latest_version,
+        rollout_policy = updates.rollout_policy,
         phase = phase,
         offer = updates.offer and {
             latest_version = updates.offer.latest_version,
@@ -594,6 +633,10 @@ local function onMatrixData(msg, cfg)
     local entry, change = rememberNode(msg.node_id, "matrix", msg.sender_id, msg.payload)
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, "matrix-data")
+    if blockMismatchedOperationalNode(entry, "matrix data") then
+        refreshPanel(cfg)
+        return
+    end
     state.matrix         = msg.payload
     state.matrix_updated = now()
     updateAlerts(cfg)
@@ -605,6 +648,10 @@ local function onReactorData(msg, cfg)
     local entry, change = rememberNode(nid, "reactor", msg.sender_id, msg.payload)
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, "reactor-data")
+    if blockMismatchedOperationalNode(entry, "reactor data") then
+        refreshPanel(cfg)
+        return
+    end
     if not state.reactors[nid] then
         state.reactors[nid] = {}
         logLine("[ctrl] New reactor node registered: " .. nid, colors.lime)
@@ -623,6 +670,10 @@ local function onPocketRequest(msg, cfg)
     local entry, change = rememberNode(msg.node_id, "pocket", msg.sender_id, msg.payload)
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, "pocket-request")
+    if blockMismatchedOperationalNode(entry, "pocket request") then
+        refreshPanel(cfg)
+        return
+    end
     local payload = buildDisplayPayload()
     -- Reply directly to the requesting computer's ID via targeted send
     -- (ender modems broadcast on a channel; we include source computer ID so
@@ -636,6 +687,7 @@ local function onNodeHello(msg, cfg)
     local entry, change = rememberNode(msg.node_id, payload.role, msg.sender_id, payload)
     reportNodeChange(entry, change)
     reconcileNode(entry, cfg, payload.status or "hello")
+    blockMismatchedOperationalNode(entry, "node hello")
     refreshPanel(cfg)
 end
 
@@ -906,6 +958,7 @@ performUpdateCheck = function(cfg, force)
 
     state.updates.controller_version = info.current_version
     state.updates.latest_version = info.latest_version
+    state.updates.rollout_policy = info.rollout_policy or version.getRolloutPolicy()
 
     local selfEntry = refreshSelfEntry(cfg, "online")
     if selfEntry then
@@ -914,7 +967,7 @@ performUpdateCheck = function(cfg, force)
         selfEntry.update_status = info.needs_update and "ready" or "online-current"
     end
 
-    logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ")", colors.lightBlue)
+    logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ", policy " .. tostring(state.updates.rollout_policy or "controller-first") .. ")", colors.lightBlue)
     local _, _, msg_id = net.send(net.MSG.UPDATE_CHECK, { desired_version = info.latest_version, force = false })
     state.updates.last_check_id = msg_id
     state.updates.check_deadline = now() + CHECK_TIMEOUT

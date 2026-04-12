@@ -14,6 +14,10 @@
 --   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua
 --   installer
 
+local _dir = fs.getDir(shell.getRunningProgram())
+if _dir == "" then _dir = "/" end
+package.path = _dir .. "/?.lua;" .. _dir .. "/?/init.lua;" .. package.path
+
 local function readManifestValue(key, fallback)
     if not fs.exists("manifest.json") then return fallback end
     local file = fs.open("manifest.json", "r")
@@ -24,7 +28,7 @@ local function readManifestValue(key, fallback)
     return raw:match(pattern) or fallback
 end
 
-local VERSION    = readManifestValue("version", "0.3.7")
+local VERSION    = readManifestValue("version", "0.3.8")
 local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -102,6 +106,23 @@ end
 
 local function trim(value)
     return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function cloneTable(source)
+    local copy = {}
+    for key, value in pairs(source or {}) do
+        copy[key] = value
+    end
+    return copy
+end
+
+local function replaceTable(target, source)
+    for key in pairs(target) do
+        target[key] = nil
+    end
+    for key, value in pairs(source or {}) do
+        target[key] = value
+    end
 end
 
 local function truncate(text, width)
@@ -499,6 +520,50 @@ local function roleIndex(role)
     return nil
 end
 
+local sanitizeRoleConfig
+
+local function normalizeSeedConfig(source)
+    local cfg = cloneTable(source)
+    if roleIndex(cfg.role) == nil then
+        cfg.role = nil
+    end
+    if cfg.channel ~= nil then cfg.channel = tonumber(cfg.channel) or 42 end
+    if cfg.controller_id ~= nil then cfg.controller_id = tonumber(cfg.controller_id) end
+    if cfg.threshold_low ~= nil then
+        cfg.threshold_low = tonumber(cfg.threshold_low)
+        if cfg.threshold_low and cfg.threshold_low > 1 then cfg.threshold_low = cfg.threshold_low / 100 end
+    end
+    if cfg.threshold_high ~= nil then
+        cfg.threshold_high = tonumber(cfg.threshold_high)
+        if cfg.threshold_high and cfg.threshold_high > 1 then cfg.threshold_high = cfg.threshold_high / 100 end
+    end
+    if cfg.update_check_interval ~= nil then cfg.update_check_interval = tonumber(cfg.update_check_interval) end
+    if cfg.auto_ctrl ~= nil then cfg.auto_ctrl = cfg.auto_ctrl == true end
+    sanitizeRoleConfig(cfg)
+    return cfg
+end
+
+local function loadExistingConfig()
+    if not fs.exists("enmon.cfg") then
+        return nil, nil
+    end
+
+    local file = fs.open("enmon.cfg", "r")
+    if not file then
+        return nil, "enmon.cfg exists but could not be opened"
+    end
+
+    local raw = file.readAll()
+    file.close()
+
+    local ok, parsed = pcall(textutils.unserialize, raw)
+    if not ok or type(parsed) ~= "table" then
+        return nil, "enmon.cfg could not be parsed and will not be reused"
+    end
+
+    return normalizeSeedConfig(parsed), nil
+end
+
 local function listPeripheralsOfType(ptype)
     local found = {}
     for _, name in ipairs(peripheral.getNames()) do
@@ -523,7 +588,7 @@ local function findMatchingNames(types)
     return found
 end
 
-local function sanitizeRoleConfig(cfg)
+sanitizeRoleConfig = function(cfg)
     if cfg.role ~= "controller" then
         cfg.speaker_side = nil
         cfg.auto_ctrl = nil
@@ -539,6 +604,56 @@ local function sanitizeRoleConfig(cfg)
 end
 
 -- Wizard pages ---------------------------------------------------------------
+
+local function pageWelcome(cfg, state)
+    local win = drawChrome("Welcome")
+    local row = 1
+    row = writeParagraph(win, row, "Install or refresh ENMON on this computer. The wizard now supports reusing an existing configuration as a starting point, then reviewing each section before files are downloaded.", STYLE.root_fg)
+    row = row + 1
+    row = writeParagraph(win, row, "Flow: welcome, role, hardware check, network identity, role-specific settings, final review, then download and write files.", STYLE.hint_fg)
+    row = row + 1
+
+    if state.existing_cfg then
+        row = writeParagraph(win, row, "Detected existing config:", STYLE.label_fg)
+        row = row + 1
+        row = writeParagraph(win, row, "Role: " .. tostring(state.existing_cfg.role or "--") .. "   Node: " .. tostring(state.existing_cfg.node_id or "--"), STYLE.root_fg)
+        row = row + 1
+        row = writeParagraph(win, row, "Channel: " .. tostring(state.existing_cfg.channel or "--") .. "   Schema: v" .. tostring(state.existing_cfg.config_version or "legacy"), STYLE.root_fg)
+        row = row + 1
+        row = writeParagraph(win, row, "Next screen lets you reuse that config or start from clean defaults.", STYLE.ok_fg)
+    elseif state.existing_err then
+        row = writeParagraph(win, row, state.existing_err, STYLE.warn_fg)
+    else
+        row = writeParagraph(win, row, "No existing config found. A new config will be created during install.", STYLE.ok_fg)
+    end
+
+    return waitNav(false, "Begin", STYLE.next_bg)
+end
+
+local function pageExistingConfig(cfg, state)
+    local current = state.use_existing == false and 2 or 1
+    local summary = "Reuse the detected configuration as a base, or start clean. Reusing keeps the current role and values loaded into the following pages so you can review and adjust them before install."
+    local choice, action = chooseFromList(
+        "Existing Configuration",
+        summary,
+        {
+            "Reuse detected config and review it page by page",
+            "Start fresh with clean defaults",
+        },
+        current,
+        true
+    )
+    if action ~= "forward" then return action end
+
+    if choice == 1 then
+        replaceTable(cfg, state.existing_cfg)
+        state.use_existing = true
+    else
+        replaceTable(cfg, {})
+        state.use_existing = false
+    end
+    return "forward"
+end
 
 local function pageRole(cfg)
     local labels = {}
@@ -827,8 +942,18 @@ local function pageConfirm(cfg)
     return waitNav(true, "Install", STYLE.install_bg)
 end
 
-local function buildPages(role)
-    local pages = { pageRole }
+local function buildPages(role, state)
+    local pages = {
+        function(cfg)
+            return pageWelcome(cfg, state)
+        end,
+    }
+    if state.existing_cfg then
+        pages[#pages + 1] = function(cfg)
+            return pageExistingConfig(cfg, state)
+        end
+    end
+    pages[#pages + 1] = pageRole
     if role then
         pages[#pages + 1] = pagePeripherals
         pages[#pages + 1] = pageIdentity
@@ -847,12 +972,17 @@ local function buildPages(role)
     return pages
 end
 
-local function runWizard()
+local function runWizard(existingCfg, existingErr)
     local cfg = {}
+    local state = {
+        existing_cfg = existingCfg,
+        existing_err = existingErr,
+        use_existing = existingCfg ~= nil,
+    }
     local idx = 1
 
     while true do
-        local pages = buildPages(cfg.role)
+        local pages = buildPages(cfg.role, state)
         if idx > #pages then
             return cfg
         end
@@ -1042,7 +1172,8 @@ if not http then
     return
 end
 
-local cfg = runWizard()
+local existingCfg, existingErr = loadExistingConfig()
+local cfg = runWizard(existingCfg, existingErr)
 if not cfg then
     cls()
     return
@@ -1094,10 +1225,19 @@ if #failed > 0 then
     return
 end
 
-local cfgFile = fs.open("enmon.cfg", "w")
-cfgFile.write(textutils.serialize(cfg))
-cfgFile.close()
-log("[OK]  enmon.cfg written", STYLE.ok_fg)
+local okConfig, config = pcall(require, "lib/config")
+if okConfig and config then
+    config.replace(cfg)
+    config.save()
+    cfg = config.export()
+    log("[OK]  enmon.cfg written (schema v" .. tostring(cfg.config_version or "?") .. ")", STYLE.ok_fg)
+else
+    local cfgFile = fs.open("enmon.cfg", "w")
+    cfgFile.write(textutils.serialize(cfg))
+    cfgFile.close()
+    log("[OK]  enmon.cfg written", STYLE.ok_fg)
+    log("[WARN] Shared config module unavailable; config migration was deferred.", STYLE.warn_fg)
+end
 
 local startup = fs.open("startup.lua", "w")
 startup.write('shell.run("enmon.lua")\n')
@@ -1119,6 +1259,7 @@ else
         shell.run("enmon.lua")
     end
 end
+
 
 
 

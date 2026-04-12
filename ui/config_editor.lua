@@ -3,6 +3,7 @@
 -- Runs on the computer terminal using Basalt 2.
 
 local basalt = require("lib/basalt")
+local config = require("lib/config")
 local version = require("lib/version")
 
 local editor = {}
@@ -147,6 +148,7 @@ function editor.run(cfg)
     local action = "exit"
     local dirty = false
     local currentVersion = version.getVersion()
+    local currentSchemaVersion = config.getCurrentVersion()
 
     local edits = {
         role = cfg.role,
@@ -266,6 +268,7 @@ function editor.run(cfg)
 
     local function refreshSummary()
         local values = {
+            config_version = "v" .. tostring(cfg.config_version or currentSchemaVersion),
             role = ROLE_LABELS[cfg.role] or tostring(cfg.role),
             node_id = cfg.node_id or "--",
             channel = tostring(cfg.channel or "--"),
@@ -327,6 +330,7 @@ function editor.run(cfg)
             :setBackground(COLORS.highlight_bg):setForeground(COLORS.highlight_fg)
             :setText(" Computer ID: " .. tostring(os.getComputerID()) .. "  <-- needed by other nodes")
         row = row + 2
+        row = addSummaryRow(panels.summary, row, "Schema", "config_version")
         row = addSummaryRow(panels.summary, row, "Role", "role")
         row = addSummaryRow(panels.summary, row, "Node ID", "node_id")
         row = addSummaryRow(panels.summary, row, "Channel", "channel")
@@ -491,14 +495,15 @@ function editor.run(cfg)
         cfg.threshold_low = edits.threshold_low
         cfg.threshold_high = edits.threshold_high
         cfg.update_check_interval = edits.update_check_interval
+        cfg.config_version = currentSchemaVersion
 
-        local file = fs.open("enmon.cfg", "w")
-        file.write(textutils.serialize(cfg))
-        file.close()
+        config.replace(cfg)
+        config.save()
+        cfg = config.export()
 
         dirty = false
         refreshSummary()
-        setStatus("Configuration saved.", COLORS.ok_fg)
+        setStatus("Configuration saved as schema v" .. tostring(cfg.config_version or currentSchemaVersion) .. ".", COLORS.ok_fg)
     end
 
     save_btn:onClick(saveConfig)

@@ -36,6 +36,8 @@ local function showUsage()
     println("Commands:")
     println("  update        Refresh only if remote version is newer")
     println("  update force  Reapply files even if the version is unchanged")
+    println("  reinstall     Alias of update force")
+    println("  verify        Compare local files against the remote manifest")
 end
 
 local resumed, resumeErr = updater.resumeInterruptedUpdate(function(message)
@@ -52,7 +54,7 @@ if not command or command == "help" or command == "--help" or command == "-h" th
     return
 end
 
-if command ~= "update" then
+if command ~= "update" and command ~= "reinstall" and command ~= "verify" then
     fatal("Unknown command: " .. tostring(command))
 end
 
@@ -61,12 +63,65 @@ if not config.exists() then
 end
 config.load()
 
-local forceUpdate = args[2] == "force" or args[2] == "--force"
+local forceUpdate = command == "reinstall" or args[2] == "force" or args[2] == "--force"
 
 println("ENMON CLI " .. tostring(VERSION), colors.cyan)
 println("Role: " .. tostring(config.get("role")))
-println("Mode: " .. (forceUpdate and "Force" or "Normal"))
-println("Checking for updates...")
+if command == "verify" then
+    println("Mode: Verify")
+    println("Comparing local files against the remote manifest...")
+
+    local ok, result = updater.verifyLocalInstallation({
+        role = config.get("role"),
+        logger = function(message)
+            logLine(message)
+        end,
+    })
+
+    if not ok then
+        fatal("Verify failed: " .. tostring(result))
+    end
+
+    println("Installed version: " .. tostring(result.current_version))
+    println("Remote version:    " .. tostring(result.latest_version))
+    if result.needs_update then
+        println("Update available: yes", colors.orange)
+    else
+        println("Update available: no", colors.lime)
+    end
+
+    if #result.missing > 0 then
+        println("Missing files:", colors.red)
+        for _, path in ipairs(result.missing) do
+            println("  - " .. tostring(path), colors.red)
+        end
+    end
+
+    if #result.mismatched > 0 then
+        println("Changed files:", colors.orange)
+        for _, path in ipairs(result.mismatched) do
+            println("  - " .. tostring(path), colors.orange)
+        end
+    end
+
+    if #result.stale > 0 then
+        println("Stale managed files:", colors.orange)
+        for _, path in ipairs(result.stale) do
+            println("  - " .. tostring(path), colors.orange)
+        end
+    end
+
+    if result.ok then
+        println("Verification OK: local files match the remote manifest.", colors.lime)
+        return
+    end
+
+    println("Verification failed: reinstall or update is recommended.", colors.red)
+    error("verification failed", 0)
+end
+
+println("Mode: " .. (forceUpdate and "Force/Reinstall" or "Normal"))
+println(command == "reinstall" and "Reinstalling from manifest..." or "Checking for updates...")
 
 local ok, result = updater.applyLocalUpdate({
     role = config.get("role"),

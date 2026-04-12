@@ -10,6 +10,8 @@ installer
 ```
 
 Run on each computer. Pick a role, follow the wizard.
+
+If `enmon.cfg` already exists, the installer now detects it and lets you reuse that config as a starting point before reviewing each page again.
 ## Node Roles
 
 | Role | Hardware needed |
@@ -31,6 +33,8 @@ All nodes must share the same **channel** and **shared secret** configured durin
 - HMAC-authenticated messages — foreign packets are silently dropped
 - Responsive UI (adapts to monitor size)
 - Peripheral check during setup wizard
+- Automatic config schema migration for older `enmon.cfg` files on load/save
+- Hash-based delta updates using manifest SHA-256 file hashes
 
 ## Hotkeys
 
@@ -56,14 +60,25 @@ Controller terminal only:
 
 ## Update Commands
 
-- `enmon-cli update` checks the remote manifest and updates only when the remote version is newer.
+- `enmon-cli update` checks the remote manifest and only downloads files whose manifest hash differs locally.
 - `enmon-cli update force` re-downloads and reapplies files even when the version number did not change.
+- `enmon-cli reinstall` is the explicit local alias of `update force`.
+- `enmon-cli verify` compares local files against the remote manifest hashes and reports missing, changed, or stale managed files.
 
 `enmon.lua` still forwards CLI arguments to `enmon-cli.lua` for compatibility, but the dedicated CLI entrypoint is now the preferred command.
 
+## Rollout Policy
+
+The manifest now includes an explicit `rollout_policy` field.
+
+- `controller-first` means the controller must be reviewed/updated before normal remote node rollout is allowed.
+- `node-safe` means remote node rollout can proceed without updating the controller first.
+
+Current default: `controller-first`.
+
 ## Release Helper
 
-Use the PowerShell helper to bump the release version and prepend a `changelog.json` entry:
+Use the PowerShell helper to bump the release version and append a `changelog.json` entry:
 
 ```powershell
 ./tools/bump-version.ps1

@@ -18,6 +18,7 @@ $manifestPath = Join-Path $repoRoot 'manifest.json'
 $installerPath = Join-Path $repoRoot 'installer.lua'
 $versionPath = Join-Path $repoRoot 'lib/version.lua'
 $changelogPath = Join-Path $repoRoot 'changelog.json'
+$basaltUrl = 'https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua'
 
 function Get-NextVersion {
     param(
@@ -66,6 +67,118 @@ function Update-FileVersionString {
     Set-Content -Path $Path -Value $updated
 }
 
+function Get-NormalizedUtf8Bytes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Text
+    )
+
+    $normalized = $Text -replace "`r`n", "`n"
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    return $utf8.GetBytes($normalized)
+}
+
+function Get-Sha256Hex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [byte[]]$Bytes
+    )
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hash = $sha.ComputeHash($Bytes)
+    }
+    finally {
+        $sha.Dispose()
+    }
+
+    return ([System.BitConverter]::ToString($hash)).Replace('-', '').ToLowerInvariant()
+}
+
+function Get-NormalizedFileHash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $raw = Get-Content -Path $Path -Raw
+    return Get-Sha256Hex -Bytes (Get-NormalizedUtf8Bytes -Text $raw)
+}
+
+function Get-NormalizedUrlHash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url
+    )
+
+    $response = Invoke-WebRequest -Uri $Url -UseBasicParsing
+    return Get-Sha256Hex -Bytes (Get-NormalizedUtf8Bytes -Text $response.Content)
+}
+
+function Get-ManifestManagedPaths {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Manifest
+    )
+
+    $paths = New-Object System.Collections.Generic.List[string]
+    $seen = @{}
+
+    foreach ($path in @('installer.lua', 'lib/basalt.lua')) {
+        if (-not $seen.ContainsKey($path)) {
+            $seen[$path] = $true
+            $paths.Add($path)
+        }
+    }
+
+    foreach ($entry in $Manifest.files.common) {
+        if (-not $seen.ContainsKey($entry)) {
+            $seen[$entry] = $true
+            $paths.Add($entry)
+        }
+    }
+
+    foreach ($roleProp in $Manifest.files.PSObject.Properties) {
+        foreach ($entry in $roleProp.Value) {
+            if (-not $seen.ContainsKey($entry)) {
+                $seen[$entry] = $true
+                $paths.Add($entry)
+            }
+        }
+    }
+
+    return $paths
+}
+
+function Update-ManifestHashes {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Manifest,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BasaltUrl
+    )
+
+    $hashes = [ordered]@{}
+    foreach ($path in Get-ManifestManagedPaths -Manifest $Manifest) {
+        if ($path -eq 'lib/basalt.lua') {
+            $hashes[$path] = Get-NormalizedUrlHash -Url $BasaltUrl
+            continue
+        }
+
+        $fullPath = Join-Path $RepoRoot $path
+        if (-not (Test-Path $fullPath)) {
+            throw "Managed file missing for hashing: $path"
+        }
+        $hashes[$path] = Get-NormalizedFileHash -Path $fullPath
+    }
+
+    $Manifest | Add-Member -NotePropertyName hashes -NotePropertyValue $hashes -Force
+}
+
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $currentVersion = [string]$manifest.version
 
@@ -74,10 +187,14 @@ if (-not $Version) {
 }
 
 $manifest.version = $Version
-$manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestPath
 
 Update-FileVersionString -Path $installerPath -Pattern 'readManifestValue\("version", "[^"]+"\)' -Replacement ('readManifestValue("version", "{0}")' -f $Version)
 Update-FileVersionString -Path $versionPath -Pattern 'version = "[^"]+"' -Replacement ('version = "{0}"' -f $Version)
+
+$manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
+$manifest.version = $Version
+Update-ManifestHashes -Manifest $manifest -RepoRoot $repoRoot -BasaltUrl $basaltUrl
+$manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath
 
 if (-not $SkipChangelog) {
     if (Test-Path $changelogPath) {

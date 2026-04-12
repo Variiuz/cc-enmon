@@ -80,7 +80,7 @@ local function statusColor(status)
     if status == "queued" or status == "checking" or status == "ack" or status == "in_progress" or status == "starting" or status == "abort-requested" then
         return COLORS.value, COLORS.list_bg
     end
-    if status == "pending-offline" or status == "wrong-controller" or status == "no-check-response" or status == "cannot-abort" or status == "aborted" then
+    if status == "pending-offline" or status == "wrong-controller" or status == "version-mismatch" or status == "no-check-response" or status == "cannot-abort" or status == "aborted" then
         return COLORS.warn_fg, COLORS.list_bg
     end
     if status == "identity-conflict" or status == "failed" or status == "timeout" or status == "rejected-no-offer" then

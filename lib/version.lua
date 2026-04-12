@@ -5,8 +5,9 @@ local version = {}
 
 local MANIFEST_PATH = "manifest.json"
 local FALLBACK = {
-    version = "0.3.7",
+    version = "0.3.8",
     base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
+    rollout_policy = "controller-first",
 }
 
 local function parseManifest(raw)
@@ -22,8 +23,9 @@ local function parseManifest(raw)
     local parsed = {
         version = raw:match('"version"%s*:%s*"([^"]+)"'),
         base_url = raw:match('"base_url"%s*:%s*"([^"]+)"'),
+        rollout_policy = raw:match('"rollout_policy"%s*:%s*"([^"]+)"'),
     }
-    if parsed.version or parsed.base_url then
+    if parsed.version or parsed.base_url or parsed.rollout_policy then
         return parsed
     end
     return nil
@@ -55,6 +57,11 @@ function version.getBaseUrl(path)
     return (manifest and manifest.base_url) or FALLBACK.base_url
 end
 
+function version.getRolloutPolicy(path)
+    local manifest = version.loadManifest(path)
+    return (manifest and manifest.rollout_policy) or FALLBACK.rollout_policy
+end
+
 local function splitVersion(raw)
     local parts = {}
     for chunk in tostring(raw or "0"):gmatch("%d+") do
@@ -84,5 +91,6 @@ function version.isNewer(candidate, current)
 end
 
 return version
+
 
 

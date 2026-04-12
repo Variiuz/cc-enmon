@@ -90,6 +90,16 @@
         "Fixed controller update HUD crash caused by missing action_state initialization",
         "Require controller review/update before normal remote node rollout and make F9 a review-then-apply local update flow"
       ]
+    },
+    {
+      "version": "0.3.8",
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add config schema migrations and installer config reuse flow",
+        "Add manifest SHA-256 hashes for true delta updates and hash-based verify",
+        "Prune stale files and block mixed-version operational traffic under controller-first rollout"
+      ]
     }
   ]
 }
