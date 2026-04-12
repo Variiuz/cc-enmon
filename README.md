@@ -61,6 +61,23 @@ Controller terminal only:
 
 Force mode on the controller exists for the same reason: if you changed files without bumping the manifest version, you can still re-offer and reapply the build.
 
+## Release Helper
+
+Use the PowerShell helper to bump the release version and prepend a `changelog.json` entry:
+
+```powershell
+./tools/bump-version.ps1
+./tools/bump-version.ps1 -Part minor
+./tools/bump-version.ps1 -Version 0.4.0 -Notes "Add new reactor flow", "Tighten updater UX"
+```
+
+It updates:
+
+- `manifest.json`
+- `installer.lua`
+- `lib/version.lua`
+- `changelog.json`
+
 ## Requirements
 
 - CC: Tweaked

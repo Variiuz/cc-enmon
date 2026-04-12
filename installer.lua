@@ -133,6 +133,28 @@ local function wrapText(text, width)
     return lines
 end
 
+local function wrapToMaxLines(text, width, max_lines)
+    local lines = wrapText(text, width)
+    if #lines <= max_lines then
+        return lines
+    end
+
+    local result = {}
+    for index = 1, max_lines do
+        result[index] = lines[index] or ""
+    end
+
+    for index = max_lines + 1, #lines do
+        if (#result[max_lines] + 3 + #lines[index]) <= width then
+            result[max_lines] = result[max_lines] .. " | " .. lines[index]
+        else
+            break
+        end
+    end
+
+    return result
+end
+
 local function clearWindow(win, bg, fg)
     win.setBackgroundColor(bg)
     win.setTextColor(fg)
@@ -198,8 +220,11 @@ end
 
 local function drawHint(text)
     local w, h = ROOT.getSize()
+    local lines = wrapToMaxLines(text or "", math.max(1, w - 2), 2)
     fillLine(ROOT, h - 1, STYLE.root_bg, STYLE.hint_fg)
-    writeAt(ROOT, 2, h - 1, truncate(text or "", w - 2), STYLE.hint_fg, STYLE.root_bg)
+    writeAt(ROOT, 2, h - 1, lines[1] or "", STYLE.hint_fg, STYLE.root_bg)
+    fillLine(ROOT, h, STYLE.root_bg, STYLE.hint_fg)
+    writeAt(ROOT, 2, h, lines[2] or "", STYLE.hint_fg, STYLE.root_bg)
 end
 
 local function drawButton(x, y, text, bg)

@@ -1,0 +1,59 @@
+{
+  "entries": [
+    {
+      "version": "0.1.0",
+      "date": null,
+      "git_head": null,
+      "notes": [
+        "Initial ENMON release with installer/setup flow and core role separation.",
+        "Basic controller, matrix, reactor, display, and pocket node support."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "date": null,
+      "git_head": null,
+      "notes": [
+        "Major TUI refresh for installer, config editor, and runtime panels.",
+        "Improved peripheral detection and post-install configuration editing."
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "date": null,
+      "git_head": null,
+      "notes": [
+        "Introduced controller-coordinated updater flow and shared version metadata.",
+        "Added node identity announcements, targeted update messaging, and rollout hardening."
+      ]
+    },
+    {
+      "version": "0.3.1",
+      "date": null,
+      "git_head": null,
+      "notes": [
+        "Added installer and launcher log scrolling improvements.",
+        "Fixed the Basalt run-loop crash path in the config editor release."
+      ]
+    },
+    {
+      "version": "0.3.2",
+      "date": null,
+      "git_head": null,
+      "notes": [
+        "Hardened raw fetches with cache-busting and canonical GitHub raw URLs.",
+        "Fixed controller HUD startup issues and updater fetch consistency."
+      ]
+    },
+    {
+      "version": "0.3.3",
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Added force-update support for CLI and controller-driven rollouts.",
+        "Added terminal log hotkeys and controller monitor/view hotkey documentation.",
+        "Added controller terminal alert rotation and release helper tooling."
+      ]
+    }
+  ]
+}

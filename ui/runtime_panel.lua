@@ -30,6 +30,30 @@ local function truncate(text, width)
     return text:sub(1, width - 3) .. "..."
 end
 
+local function wrapText(text, width)
+    local lines = {}
+    for raw in tostring(text or ""):gmatch("[^\n]+") do
+        local line = ""
+        for word in raw:gmatch("%S+") do
+            if line == "" then
+                line = word
+            elseif (#line + 1 + #word) <= width then
+                line = line .. " " .. word
+            else
+                lines[#lines + 1] = line
+                line = word
+            end
+        end
+        if line ~= "" then
+            lines[#lines + 1] = line
+        elseif raw == "" then
+            lines[#lines + 1] = ""
+        end
+    end
+    if #lines == 0 then lines[1] = "" end
+    return lines
+end
+
 function panel.new(section, options)
     local root = term.current()
     options = options or {}
@@ -73,12 +97,10 @@ function panel.new(section, options)
         local hint = tostring(state.hint or "")
         if state.view ~= "logs" then
             local logs_hint = "F3 logs"
-            local width = select(1, root.getSize())
             if hint == "" then
-                return truncate(logs_hint, math.max(1, width - 2))
+                return logs_hint
             end
-            local prefix = truncate(hint, math.max(1, width - #logs_hint - 5))
-            return prefix .. " | " .. logs_hint
+            return hint .. " | " .. logs_hint
         end
 
         local scroll_hint = "F3 status  Up/down PgUp/PgDn Home/End"
@@ -88,13 +110,30 @@ function panel.new(section, options)
             scroll_hint = scroll_hint .. string.format(" %d lines above latest", state.scroll_offset)
         end
 
-        local width = select(1, root.getSize())
         if hint == "" then
-            return truncate(scroll_hint, math.max(1, width - 2))
+            return scroll_hint
+        end
+        return hint .. " | " .. scroll_hint
+    end
+
+    local function buildHintLines(log_height)
+        local width = math.max(1, select(1, root.getSize()) - 2)
+        local wrapped = wrapText(buildHint(log_height), width)
+        local first = wrapped[1] or ""
+        local second = wrapped[2] or ""
+
+        if #wrapped > 2 then
+            second = wrapped[2]
+            for index = 3, #wrapped do
+                if (#second + 3 + #wrapped[index]) <= width then
+                    second = second .. " | " .. wrapped[index]
+                else
+                    break
+                end
+            end
         end
 
-        local prefix = truncate(hint, math.max(1, width - #scroll_hint - 5))
-        return prefix .. " | " .. scroll_hint
+        return first, second
     end
 
     local function writeAt(target, x, y, text, fg, bg)
@@ -172,9 +211,11 @@ function panel.new(section, options)
             drawLogRows(content, row, log_height)
         end
 
+        local hint1, hint2 = buildHintLines(log_height)
         fillLine(h - 1, STYLE.root_bg, STYLE.hint_fg)
-        writeAt(root, 2, h - 1, buildHint(log_height), STYLE.hint_fg, STYLE.root_bg)
-        fillLine(h, STYLE.root_bg, STYLE.root_fg)
+        writeAt(root, 2, h - 1, hint1, STYLE.hint_fg, STYLE.root_bg)
+        fillLine(h, STYLE.root_bg, STYLE.hint_fg)
+        writeAt(root, 2, h, hint2, STYLE.hint_fg, STYLE.root_bg)
     end
 
     local function scroll(delta)

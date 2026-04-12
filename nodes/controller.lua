@@ -44,6 +44,7 @@ local state = {
     matrix_updated = 0,
     reactors = {},
     alerts   = {},
+    alert_index = 1,
     updates  = {
         controller_version = version.getVersion(),
         latest_version = nil,
@@ -401,6 +402,29 @@ local function updateAlerts(cfg)
     end
 
     state.alerts = new_alerts
+    if #state.alerts == 0 then
+        state.alert_index = 1
+    else
+        state.alert_index = math.max(1, math.min(state.alert_index or 1, #state.alerts))
+    end
+end
+
+local function currentAlertText()
+    if #state.alerts == 0 then
+        return "All nominal", colors.black, colors.white
+    end
+
+    local index = state.alert_index or 1
+    if index < 1 or index > #state.alerts then
+        index = 1
+        state.alert_index = 1
+    end
+    return state.alerts[index], colors.red, colors.white
+end
+
+local function rotateAlert()
+    if #state.alerts <= 1 then return end
+    state.alert_index = (state.alert_index % #state.alerts) + 1
 end
 
 local function playAlerts(speaker, cfg)
@@ -470,9 +494,7 @@ local function refreshPanel(cfg)
         matrix_bg = colors.white
     end
 
-    local alert_text = (#state.alerts > 0) and state.alerts[1] or "All nominal"
-    local alert_fg = (#state.alerts > 0) and colors.red or colors.black
-    local alert_bg = colors.white
+    local alert_text, alert_fg, alert_bg = currentAlertText()
 
     runtime_ui.setSummary({
         { "Computer ID", tostring(os.getComputerID()), colors.white, colors.blue },
@@ -1118,6 +1140,8 @@ function controller.run(cfg)
                 display_timer = os.startTimer(DISPLAY_INTERVAL)
             elseif id == alert_timer then
                 playAlerts(speaker, cfg)
+                rotateAlert()
+                refreshPanel(cfg)
                 alert_timer = os.startTimer(5)
             elseif id == rollout_timer then
                 tickRollout(cfg)
