@@ -24,7 +24,7 @@ local function readManifestValue(key, fallback)
     return raw:match(pattern) or fallback
 end
 
-local VERSION    = readManifestValue("version", "0.3.5")
+local VERSION    = readManifestValue("version", "0.3.6")
 local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -1119,4 +1119,5 @@ else
         shell.run("enmon.lua")
     end
 end
+
 

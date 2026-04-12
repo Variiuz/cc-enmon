@@ -95,11 +95,6 @@ if (-not $SkipChangelog) {
     }
 
     $gitHead = $null
-    try {
-        $gitHead = (git -C $repoRoot rev-parse --short HEAD).Trim()
-    } catch {
-        $gitHead = $null
-    }
 
     $newEntry = [ordered]@{
         version = $Version

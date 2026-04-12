@@ -5,7 +5,7 @@ local version = {}
 
 local MANIFEST_PATH = "manifest.json"
 local FALLBACK = {
-    version = "0.3.5",
+    version = "0.3.6",
     base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
 }
 
@@ -84,3 +84,4 @@ function version.isNewer(candidate, current)
 end
 
 return version
+
