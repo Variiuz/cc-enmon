@@ -9,6 +9,7 @@
 
 local net  = require("lib/network")
 local pmgr = require("lib/peripheral_mgr")
+local runtime_panel = require("ui/runtime_panel")
 
 local POLL_INTERVAL  = 2   -- seconds between broadcasts
 local MODEM_TYPE     = "ender_modem"
@@ -22,6 +23,22 @@ local REACTOR_TYPES  = {
 }
 
 local reactor = {}
+local runtime_ui = nil
+
+local function updatePanel(cfg, status, detail, color)
+    if not runtime_ui then return end
+    runtime_ui.setSummary({
+        { "Node", tostring(cfg.get("node_id")) },
+        { "Channel", tostring(cfg.get("channel")) },
+        { "Controller", tostring(cfg.get("controller_id") or "--") },
+        { "Status", status or "Idle", color or colors.black, colors.white },
+        { "Detail", detail or "--" },
+    })
+end
+
+local function logLine(msg, fg)
+    if runtime_ui then runtime_ui.log(msg, fg) else print(msg) end
+end
 
 local function findModem()
     local m = pmgr.find(MODEM_TYPE)
@@ -38,11 +55,11 @@ local function findReactor()
 end
 
 local function waitForReactor()
-    print("[reactor] Waiting for reactor peripheral...")
+    logLine("[reactor] Waiting for reactor peripheral...", colors.orange)
     while true do
         local p, t = findReactor()
         if p then
-            print("[reactor] Found: " .. t)
+            logLine("[reactor] Found: " .. t, colors.lime)
             return p
         end
         os.sleep(1)
@@ -71,25 +88,30 @@ local function applyCommand(port, msg)
     -- CMD_REACTOR_SET payload: { active = bool }
     local want_active = msg.payload.active
     if type(want_active) ~= "boolean" then
-        print("[reactor] Ignoring malformed CMD_REACTOR_SET (active must be bool)")
+        logLine("[reactor] Ignoring malformed CMD_REACTOR_SET (active must be bool)", colors.red)
         return
     end
     local ok, err = pmgr.call(port, "setActive", want_active)
     if not ok then
-        print("[reactor] setActive failed: " .. tostring(err))
+        logLine("[reactor] setActive failed: " .. tostring(err), colors.red)
     else
-        print("[reactor] setActive(" .. tostring(want_active) .. ") OK")
+        logLine("[reactor] setActive(" .. tostring(want_active) .. ") OK", colors.lightBlue)
     end
 end
 
 function reactor.run(cfg)
-    print("[reactor] Starting reactor node: " .. cfg.get("node_id"))
+    runtime_ui = runtime_panel.new("Reactor Node")
+    runtime_ui.setHint("This node reports reactor state and listens for controller commands")
+    logLine("[reactor] Starting reactor node: " .. cfg.get("node_id"), colors.lime)
+    updatePanel(cfg, "Booting", "Opening network", colors.black)
 
     openNet(cfg)
 
+    updatePanel(cfg, "Waiting", "Reactor peripheral", colors.orange)
     local port = waitForReactor()
 
-    print("[reactor] Broadcasting every " .. POLL_INTERVAL .. "s. Listening for commands.")
+    logLine("[reactor] Broadcasting every " .. POLL_INTERVAL .. "s. Listening for commands.", colors.lime)
+    updatePanel(cfg, "Online", "Broadcasting every " .. POLL_INTERVAL .. "s", colors.lime)
 
     local consecutive_errors = 0
     local MAX_ERRORS = 10
@@ -103,13 +125,18 @@ function reactor.run(cfg)
             if data then
                 consecutive_errors = 0
                 net.send(net.MSG.REACTOR_DATA, data)
+                local detail = (data.active and "ON" or "OFF") .. "  " .. tostring(data.produced_last_t or 0) .. " RF/t"
+                updatePanel(cfg, "Online", detail, colors.lime)
             else
                 consecutive_errors = consecutive_errors + 1
-                print("[reactor] Poll error (" .. consecutive_errors .. "): " .. tostring(err))
+                logLine("[reactor] Poll error (" .. consecutive_errors .. "): " .. tostring(err), colors.red)
+                updatePanel(cfg, "Error", tostring(err), colors.red)
                 if consecutive_errors >= MAX_ERRORS then
-                    print("[reactor] Reconnecting...")
+                    logLine("[reactor] Reconnecting...", colors.orange)
+                    updatePanel(cfg, "Waiting", "Reconnecting reactor", colors.orange)
                     port = waitForReactor()
                     consecutive_errors = 0
+                    updatePanel(cfg, "Online", "Reconnected", colors.lime)
                 end
             end
         end
@@ -134,7 +161,7 @@ function reactor.run(cfg)
                 if ctrl_id == nil or msg.sender_id == ctrl_id then
                     applyCommand(port, msg)
                 else
-                    print("[reactor] Ignoring CMD from unknown sender: " .. tostring(msg.sender_id))
+                    logLine("[reactor] Ignoring CMD from unknown sender: " .. tostring(msg.sender_id), colors.red)
                 end
             end
         end

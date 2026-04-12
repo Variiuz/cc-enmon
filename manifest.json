@@ -10,6 +10,7 @@
       "lib/network.lua",
       "lib/peripheral_mgr.lua",
       "ui/setup.lua",
+      "ui/runtime_panel.lua",
       "ui/config_editor.lua"
     ],
     "controller": [

@@ -13,31 +13,51 @@ if _dir == "" then _dir = "/" end
 package.path = _dir .. "/?.lua;" .. _dir .. "/?/init.lua;" .. package.path
 
 local config = require("lib/config")
+local runtime_panel = require("ui/runtime_panel")
 
 local function cls() term.clear(); term.setCursorPos(1, 1) end
 
+local boot_ui = nil
+
 local function fatal(msg)
-    term.setTextColor(colors.red)
-    print("[ENMON] FATAL: " .. tostring(msg))
-    term.setTextColor(colors.white)
-    print("Press any key to exit.")
-    os.pullEvent("key")
+    if boot_ui then
+        boot_ui.setSection("Fatal Error")
+        boot_ui.setSummary({
+            { "Version", VERSION },
+            { "Computer", tostring(os.getComputerID()) },
+            { "Error", tostring(msg), colors.red, colors.white },
+        })
+        boot_ui.setHint("Press any key to exit")
+        os.pullEvent("key")
+    else
+        term.setTextColor(colors.red)
+        print("[ENMON] FATAL: " .. tostring(msg))
+        term.setTextColor(colors.white)
+        print("Press any key to exit.")
+        os.pullEvent("key")
+    end
     error(msg, 0)
 end
 
 -- ── Bootstrap ──────────────────────────────────────────────────────────────────
 cls()
-term.setTextColor(colors.yellow)
-print("ENMON v" .. VERSION .. "  -  Energy Network Monitor")
-term.setTextColor(colors.white)
-print()
+boot_ui = runtime_panel.new("Launcher")
+boot_ui.setSummary({
+    { "Version", VERSION },
+    { "Computer", tostring(os.getComputerID()) },
+    { "Status", "Loading configuration..." },
+})
+boot_ui.setHint("Run installer.lua if this node is not configured")
 
 -- First run: no config found
 if not config.exists() then
-    term.setTextColor(colors.red)
-    print("No configuration found.")
-    print("Run installer.lua to set up this node.")
-    term.setTextColor(colors.white)
+    boot_ui.setSection("Configuration Missing")
+    boot_ui.setSummary({
+        { "Version", VERSION },
+        { "Computer", tostring(os.getComputerID()) },
+        { "Status", "No configuration found", colors.red, colors.white },
+    })
+    boot_ui.setHint("Run installer.lua to set up this node")
     return
 end
 config.load()
@@ -61,10 +81,14 @@ if not mod_path then
     fatal("Unknown role: " .. tostring(role))
 end
 
-term.setTextColor(colors.cyan)
-print("Starting as: " .. role .. "  (node: " .. tostring(config.get("node_id")) .. ")")
-term.setTextColor(colors.white)
-print()
+boot_ui.setSection("Launching")
+boot_ui.setSummary({
+    { "Version", VERSION },
+    { "Role", tostring(role) },
+    { "Node", tostring(config.get("node_id")) },
+    { "Channel", tostring(config.get("channel")) },
+})
+boot_ui.setHint("Preparing runtime UI...")
 
 -- Small delay so the user can read the role line before UI takes over
 os.sleep(0.5)

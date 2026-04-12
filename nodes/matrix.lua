@@ -9,6 +9,7 @@
 local net  = require("lib/network")
 local pmgr = require("lib/peripheral_mgr")
 local util = require("lib/util")
+local runtime_panel = require("ui/runtime_panel")
 
 local POLL_INTERVAL = 2   -- seconds between broadcasts
 local MODEM_TYPE    = "ender_modem"
@@ -20,6 +21,22 @@ local MATRIX_TYPES  = {
 }
 
 local matrix = {}
+local runtime_ui = nil
+
+local function updatePanel(cfg, status, detail, color)
+    if not runtime_ui then return end
+    runtime_ui.setSummary({
+        { "Node", tostring(cfg.get("node_id")) },
+        { "Channel", tostring(cfg.get("channel")) },
+        { "Computer", tostring(os.getComputerID()) },
+        { "Status", status or "Idle", color or colors.black, colors.white },
+        { "Detail", detail or "--" },
+    })
+end
+
+local function logLine(msg, fg)
+    if runtime_ui then runtime_ui.log(msg, fg) else print(msg) end
+end
 
 -- Try each known type string, validating the peripheral actually responds.
 -- Falls back to scanning all peripherals for any with the Mekanism energy API.
@@ -37,7 +54,7 @@ local function findInductionPort()
                          or type(p.getEnergyCapacity) == "function"
             local responds = pcall(p.getEnergy, p)
             if has_cap and responds then
-                print("[matrix] Found induction port via method scan: " .. name)
+                logLine("[matrix] Found induction port via method scan: " .. name, colors.lightBlue)
                 return p
             end
         end
@@ -94,17 +111,22 @@ local function pollMatrix(port)
 end
 
 function matrix.run(cfg)
-    print("[matrix] Starting matrix node: " .. cfg.get("node_id"))
+    runtime_ui = runtime_panel.new("Matrix Node")
+    runtime_ui.setHint("This terminal shows runtime status; the matrix data is sent over network")
+    logLine("[matrix] Starting matrix node: " .. cfg.get("node_id"), colors.lime)
+    updatePanel(cfg, "Booting", "Opening network", colors.black)
 
     openNet(cfg)
 
     -- Wait for the induction port to become available
-    print("[matrix] Waiting for induction port...")
+    logLine("[matrix] Waiting for induction port...", colors.orange)
+    updatePanel(cfg, "Waiting", "Induction port", colors.orange)
     local port = waitForPort()
     if not port then
         error("Induction port not found.")
     end
-    print("[matrix] Induction port connected. Broadcasting every " .. POLL_INTERVAL .. "s.")
+    logLine("[matrix] Induction port connected. Broadcasting every " .. POLL_INTERVAL .. "s.", colors.lime)
+    updatePanel(cfg, "Online", "Broadcasting every " .. POLL_INTERVAL .. "s", colors.lime)
 
     local consecutive_errors = 0
     local MAX_ERRORS = 10
@@ -115,17 +137,21 @@ function matrix.run(cfg)
         if data then
             consecutive_errors = 0
             net.send(net.MSG.MATRIX_DATA, data)
+            updatePanel(cfg, "Online", util.formatPercent(util.fillFraction(data.energy, data.max_energy)), colors.lime)
         else
             consecutive_errors = consecutive_errors + 1
-            print("[matrix] Poll error (" .. consecutive_errors .. "): " .. tostring(err))
+            logLine("[matrix] Poll error (" .. consecutive_errors .. "): " .. tostring(err), colors.red)
+            updatePanel(cfg, "Error", tostring(err), colors.red)
 
             if consecutive_errors >= MAX_ERRORS then
                 -- Peripheral likely disconnected; attempt to reconnect
-                print("[matrix] Too many errors — waiting for induction port to reconnect...")
+                logLine("[matrix] Too many errors - waiting for induction port to reconnect...", colors.orange)
+                updatePanel(cfg, "Waiting", "Reconnecting induction port", colors.orange)
                 port = waitForPort()
                 if port then
                     consecutive_errors = 0
-                    print("[matrix] Reconnected.")
+                    logLine("[matrix] Reconnected.", colors.lime)
+                    updatePanel(cfg, "Online", "Reconnected", colors.lime)
                 end
             end
         end
