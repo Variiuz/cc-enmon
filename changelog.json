@@ -100,6 +100,28 @@
         "Add manifest SHA-256 hashes for true delta updates and hash-based verify",
         "Prune stale files and block mixed-version operational traffic under controller-first rollout"
       ]
+    },
+    {
+      "version": "0.3.8",
+      "manifest_revision": 1,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add manifest_revision support so same-version hotfixes can be detected normally",
+        "Use composed release labels for hash-based update checks and cache-busting",
+        "Document same-version hotfix publishing via manifest revision"
+      ]
+    },
+    {
+      "version": "0.3.8",
+      "manifest_revision": 2,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Merge controller runtime update fields into one compact Updates row",
+        "Add manifest_revision support so same-version hotfixes can be detected normally",
+        "Use composed release labels for hash-based update checks and cache-busting"
+      ]
     }
   ]
 }

@@ -65,6 +65,8 @@ Controller terminal only:
 - `enmon-cli reinstall` is the explicit local alias of `update force`.
 - `enmon-cli verify` compares local files against the remote manifest hashes and reports missing, changed, or stale managed files.
 
+Normal updates trigger on a newer release label. A same-version hotfix is published by incrementing `manifest_revision`, which produces labels such as `0.3.8+r1`.
+
 `enmon.lua` still forwards CLI arguments to `enmon-cli.lua` for compatibility, but the dedicated CLI entrypoint is now the preferred command.
 
 ## Rollout Policy
@@ -84,6 +86,7 @@ Use the PowerShell helper to bump the release version and append a `changelog.js
 ./tools/bump-version.ps1
 ./tools/bump-version.ps1 -Part minor
 ./tools/bump-version.ps1 -Version 0.4.0 -Notes "Add new reactor flow", "Tighten updater UX"
+./tools/bump-version.ps1 -Hotfix -Notes "Same-version hotfix with new manifest revision"
 ```
 
 It updates:

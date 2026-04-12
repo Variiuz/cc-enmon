@@ -166,7 +166,7 @@ function updater.collectFiles(manifest, role)
     end
 
     local base = manifest.base_url or version.getBaseUrl()
-    local token = manifest.version or version.getVersion()
+    local token = version.composeRelease(manifest.version or version.getBaseVersion(), manifest.manifest_revision or 0)
     local hashes = type(manifest.hashes) == "table" and manifest.hashes or {}
     local files = {
         { path = "manifest.json", url = cacheBust(base .. "manifest.json", token), hash = hashes["manifest.json"] },
@@ -189,11 +189,14 @@ function updater.checkForUpdate(role, base_url, force)
     if not manifest then return nil, err end
 
     local current = version.getVersion()
+    local latest = version.composeRelease(manifest.version or version.getBaseVersion(), manifest.manifest_revision or 0)
     return {
         role = role,
         current_version = current,
-        latest_version = manifest.version or current,
-        needs_update = force == true or version.isNewer(manifest.version, current),
+        latest_version = latest,
+        latest_base_version = manifest.version or version.getBaseVersion(),
+        latest_manifest_revision = tonumber(manifest.manifest_revision) or 0,
+        needs_update = force == true or version.isNewer(latest, current),
         force = force == true,
         rollout_policy = manifest.rollout_policy or version.getRolloutPolicy(),
         manifest = manifest,

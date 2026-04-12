@@ -6,6 +6,7 @@ local version = {}
 local MANIFEST_PATH = "manifest.json"
 local FALLBACK = {
     version = "0.3.8",
+    manifest_revision = 2,
     base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
     rollout_policy = "controller-first",
 }
@@ -22,10 +23,11 @@ local function parseManifest(raw)
 
     local parsed = {
         version = raw:match('"version"%s*:%s*"([^"]+)"'),
+        manifest_revision = tonumber(raw:match('"manifest_revision"%s*:%s*(%d+)')) or 0,
         base_url = raw:match('"base_url"%s*:%s*"([^"]+)"'),
         rollout_policy = raw:match('"rollout_policy"%s*:%s*"([^"]+)"'),
     }
-    if parsed.version or parsed.base_url or parsed.rollout_policy then
+    if parsed.version or parsed.base_url or parsed.rollout_policy or parsed.manifest_revision ~= 0 then
         return parsed
     end
     return nil
@@ -47,9 +49,27 @@ function version.parseManifest(raw)
     return parseManifest(raw)
 end
 
-function version.getVersion(path)
+function version.composeRelease(rawVersion, manifestRevision)
+    local base = tostring(rawVersion or FALLBACK.version)
+    local revision = tonumber(manifestRevision) or 0
+    if revision > 0 then
+        return base .. "+r" .. tostring(math.floor(revision))
+    end
+    return base
+end
+
+function version.getBaseVersion(path)
     local manifest = version.loadManifest(path)
     return (manifest and manifest.version) or FALLBACK.version
+end
+
+function version.getManifestRevision(path)
+    local manifest = version.loadManifest(path)
+    return tonumber(manifest and manifest.manifest_revision) or FALLBACK.manifest_revision
+end
+
+function version.getVersion(path)
+    return version.composeRelease(version.getBaseVersion(path), version.getManifestRevision(path))
 end
 
 function version.getBaseUrl(path)
@@ -91,6 +111,10 @@ function version.isNewer(candidate, current)
 end
 
 return version
+
+
+
+
 
 
 

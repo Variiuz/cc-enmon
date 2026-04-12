@@ -4,6 +4,8 @@ param(
 
     [string]$Version,
 
+    [switch]$Hotfix,
+
     [string]$Date = (Get-Date -Format 'yyyy-MM-dd'),
 
     [string[]]$Notes,
@@ -60,10 +62,11 @@ function Update-FileVersionString {
     )
 
     $raw = Get-Content -Path $Path -Raw
-    $updated = [regex]::Replace($raw, $Pattern, $Replacement, 1)
-    if ($updated -eq $raw) {
+    $regex = [regex]::new($Pattern)
+    if (-not $regex.IsMatch($raw)) {
         throw "No version string matched in $Path"
     }
+    $updated = $regex.Replace($raw, $Replacement, 1)
     Set-Content -Path $Path -Value $updated
 }
 
@@ -179,20 +182,48 @@ function Update-ManifestHashes {
     $Manifest | Add-Member -NotePropertyName hashes -NotePropertyValue $hashes -Force
 }
 
+function Set-ManifestRevision {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Manifest,
+
+        [Parameter(Mandatory = $true)]
+        [int]$ManifestRevision
+    )
+
+    $Manifest | Add-Member -NotePropertyName manifest_revision -NotePropertyValue $ManifestRevision -Force
+}
+
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $currentVersion = [string]$manifest.version
+$currentManifestRevision = 0
+if ($manifest.PSObject.Properties.Name -contains 'manifest_revision') {
+    $currentManifestRevision = [int]$manifest.manifest_revision
+}
 
-if (-not $Version) {
+if ($Hotfix -and $PSBoundParameters.ContainsKey('Version') -and $Version -ne $currentVersion) {
+    throw 'Hotfix mode cannot change the semantic version. Omit -Version or pass the current version.'
+}
+
+if ($Hotfix) {
+    $Version = $currentVersion
+}
+elseif (-not $Version) {
     $Version = Get-NextVersion -CurrentVersion $currentVersion -Part $Part
 }
 
-$manifest.version = $Version
+$manifestRevision = if ($Hotfix) { $currentManifestRevision + 1 } else { 0 }
 
-Update-FileVersionString -Path $installerPath -Pattern 'readManifestValue\("version", "[^"]+"\)' -Replacement ('readManifestValue("version", "{0}")' -f $Version)
-Update-FileVersionString -Path $versionPath -Pattern 'version = "[^"]+"' -Replacement ('version = "{0}"' -f $Version)
+$manifest.version = $Version
+Set-ManifestRevision -Manifest $manifest -ManifestRevision $manifestRevision
+
+Update-FileVersionString -Path $installerPath -Pattern 'local VERSION\s*=\s*composeReleaseLabel\(readManifestValue\("version", "[^"]+"\), readManifestNumber\("manifest_revision", \d+\)\)' -Replacement ('local VERSION    = composeReleaseLabel(readManifestValue("version", "{0}"), readManifestNumber("manifest_revision", {1}))' -f $Version, $manifestRevision)
+Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*version = "[^"]+",' -Replacement ('    version = "{0}",' -f $Version)
+Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*manifest_revision = \d+,' -Replacement ('    manifest_revision = {0},' -f $manifestRevision)
 
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $manifest.version = $Version
+Set-ManifestRevision -Manifest $manifest -ManifestRevision $manifestRevision
 Update-ManifestHashes -Manifest $manifest -RepoRoot $repoRoot -BasaltUrl $basaltUrl
 $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath
 
@@ -215,6 +246,7 @@ if (-not $SkipChangelog) {
 
     $newEntry = [ordered]@{
         version = $Version
+        manifest_revision = $manifestRevision
         date = $Date
         git_head = $gitHead
         notes = @($Notes)
@@ -222,7 +254,11 @@ if (-not $SkipChangelog) {
 
     $filtered = @()
     foreach ($entry in $entries) {
-        if ($entry.version -ne $Version) {
+        $entryRevision = 0
+        if ($entry.PSObject.Properties.Name -contains 'manifest_revision') {
+            $entryRevision = [int]$entry.manifest_revision
+        }
+        if ($entry.version -ne $Version -or $entryRevision -ne $manifestRevision) {
             $filtered += $entry
         }
     }
@@ -234,7 +270,12 @@ if (-not $SkipChangelog) {
     $updatedChangelog | ConvertTo-Json -Depth 10 | Set-Content -Path $changelogPath
 }
 
-Write-Host ("Version bumped: {0} -> {1}" -f $currentVersion, $Version)
+if ($Hotfix) {
+    Write-Host ("Hotfix revision bumped: {0}+r{1} -> {2}+r{3}" -f $currentVersion, $currentManifestRevision, $Version, $manifestRevision)
+}
+else {
+    Write-Host ("Version bumped: {0} -> {1}" -f $currentVersion, $Version)
+}
 if (-not $SkipChangelog) {
     Write-Host "Updated changelog.json"
 }

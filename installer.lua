@@ -28,7 +28,27 @@ local function readManifestValue(key, fallback)
     return raw:match(pattern) or fallback
 end
 
-local VERSION    = readManifestValue("version", "0.3.8")
+local function readManifestNumber(key, fallback)
+    if not fs.exists("manifest.json") then return fallback end
+    local file = fs.open("manifest.json", "r")
+    if not file then return fallback end
+    local raw = file.readAll()
+    file.close()
+    local pattern = '"' .. key .. '"%s*:%s*(%d+)'
+    local value = tonumber(raw:match(pattern))
+    if value == nil then return fallback end
+    return value
+end
+
+local function composeReleaseLabel(baseVersion, manifestRevision)
+    local revision = tonumber(manifestRevision) or 0
+    if revision > 0 then
+        return tostring(baseVersion) .. "+r" .. tostring(math.floor(revision))
+    end
+    return tostring(baseVersion)
+end
+
+local VERSION    = composeReleaseLabel(readManifestValue("version", "0.3.8"), readManifestNumber("manifest_revision", 2))
 local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -1199,8 +1219,9 @@ for _, path in ipairs(manifest.files.common or {}) do files[#files + 1] = path e
 for _, path in ipairs(manifest.files[cfg.role] or {}) do files[#files + 1] = path end
 
 local failed = {}
+local manifestToken = composeReleaseLabel(manifest.version or VERSION, manifest.manifest_revision or 0)
 for _, path in ipairs(files) do
-    local ok, err = download(manifest.base_url .. path, path, manifest.version or VERSION)
+    local ok, err = download(manifest.base_url .. path, path, manifestToken)
     if ok then
         log("[OK]  " .. path, STYLE.ok_fg)
     else
@@ -1209,7 +1230,7 @@ for _, path in ipairs(files) do
     end
 end
 
-local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua", manifest.version or VERSION)
+local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua", manifestToken)
 if basaltOk then
     log("[OK]  lib/basalt.lua", STYLE.ok_fg)
 else
@@ -1259,6 +1280,9 @@ else
         shell.run("enmon.lua")
     end
 end
+
+
+
 
 
 

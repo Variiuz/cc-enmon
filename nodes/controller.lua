@@ -384,6 +384,26 @@ local function buildRuntimeUpdateSummary(cfg)
     return "--", "--"
 end
 
+local function buildRuntimeUpdatesLine(cfg)
+    local controllerNeedsUpdate = controllerNeedsReviewUpdate(cfg)
+    local controllerPath = buildVersionPath(
+        state.updates.controller_version or "--",
+        state.updates.latest_version,
+        controllerNeedsUpdate == true
+    )
+    local updateNode, updatePath = buildRuntimeUpdateSummary(cfg)
+
+    if updateNode == "--" or updatePath == "--" then
+        return controllerPath
+    end
+
+    if updateNode == "All" then
+        return controllerPath .. " | " .. updatePath
+    end
+
+    return controllerPath .. " | " .. tostring(updateNode) .. " " .. tostring(updatePath)
+end
+
 local function buildUpdateSnapshot()
     local updates = state.updates
     local counts = {
@@ -613,14 +633,12 @@ local function refreshPanel(cfg)
     end
 
     local alert_text, alert_fg, alert_bg = currentAlertText()
-    local update_node, update_path = buildRuntimeUpdateSummary(cfg)
+    local updates_line = buildRuntimeUpdatesLine(cfg)
 
     runtime_ui.setSummary({
         { "Computer ID", tostring(os.getComputerID()), colors.white, colors.blue },
         { "Node", tostring(cfg.get("node_id")) },
-        { "Version", tostring(state.updates.controller_version) .. (state.updates.latest_version and (" -> " .. tostring(state.updates.latest_version)) or "") },
-        { "Update Node", update_node },
-        { "Update Path", update_path },
+        { "Updates", updates_line },
         { "Channel", tostring(cfg.get("channel")) },
         { "Matrix", matrix_status, matrix_fg, matrix_bg },
         { "Reactors", tostring(reactor_count) },
