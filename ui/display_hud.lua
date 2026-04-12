@@ -212,17 +212,7 @@ function hud.update(data)
 
     local samples = data.history or {}
     if e.hist_fill then
-        local fill_line, fill_latest = renderHistoryLine(
-            samples,
-            e.hist_graph_w or 10,
-            function(sample)
-                return (tonumber(sample.matrix_fill) or 0) * 100
-            end,
-            function(value)
-                return util.formatPercent((tonumber(value) or 0) / 100)
-            end,
-            "--"
-        )
+        local fill_line, fill_latest = graph.renderMatrixFillLine(samples, e.hist_graph_w or 10)
         e.hist_fill:setText(truncate("Fill " .. fill_line .. " " .. fill_latest, e.hist_text_w or 20))
     end
     if e.hist_output then

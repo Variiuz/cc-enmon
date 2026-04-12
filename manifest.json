@@ -52,7 +52,7 @@
       "ui/pocket_hud.lua"
     ]
   },
-  "manifest_revision": 2,
+  "manifest_revision": 3,
   "hashes": {
     "installer.lua": "5c5709f74f04878bb64c28107461407af9297ccf86b01937b458618f6904ce2d",
     "lib/basalt.lua": "1885c88b48ff55a12d6648a44d89c2418bf920f15f62713c74217a368c00d887",
@@ -67,7 +67,7 @@
     "lib/node_runtime.lua": "5856ef47a84d18d1cbf03dafdf805896cdb4d6600b728bfdc432034d96c343a0",
     "lib/pocket_link.lua": "fd60591a4619d26c69af8bb817430c95e0079482af8220a10cfbf07de2c95f62",
     "lib/util.lua": "972a0c91a56e5010d314619a2436b04b1e1a9e00b6fdf6f631ecff5799d09ced",
-    "lib/version.lua": "89fb259dded7e6454a2239735524a794f142e80206a25aa371643eda3f0184df",
+    "lib/version.lua": "11e535c0b574a3f00c72d25985719fad766e932df8ced4cf37b96bce04ba57ff",
     "lib/hmac.lua": "ed1a411e072074c8f0c66fcb21d4b28108dc4a3bf415f9c644367d5b283dc974",
     "lib/network.lua": "bbe06b89b4bad33160c41a9cbd78e7703b6635cbe8d39a153de62c2813a76ab8",
     "lib/controller_link.lua": "ac18ed394e1f6e82dc5febf6b021a94a01c7b0d2a1ef427b3748f658db57a6d3",
@@ -84,13 +84,13 @@
     "nodes/controller/runtime.lua": "ae84fe937ee7554dc08a2e558fc83f424d227b14ee5cd53d216ddef3b8ddb631",
     "nodes/controller/telemetry.lua": "f49fa153c4c3de576740fea6d6209b12297b87e2225feabf7b4d6ff33315d217",
     "nodes/controller/updates.lua": "04c6bfd362bfd429329e58ba3e455ed32e689e98b597c3a52951a57ea19fa4cd",
-    "ui/controller_hud.lua": "475f598a7c2517fb16e797c1ce247e374a4df2ccf96cc44a4bc95c97ac923411",
+    "ui/controller_hud.lua": "30ce2ddf0c8c38fde4a01dd01e0f2d4f03cb7fe9eca29d5cd16ca0718c9c4952",
     "nodes/matrix/init.lua": "12bb5c416e6f84ad46924762a886143bc097201486fe353b1797da6da52fa6d9",
     "nodes/matrix/peripheral.lua": "151b103ff4b8c555be94c96dcfd0c9c56d33bcef137fb9e13be03875468f40c4",
     "nodes/reactor/init.lua": "8bc84ed4f780476b49ea7514796a3fc33475be9bacccf00c8da8a9421800800e",
     "nodes/reactor/peripheral.lua": "aabfab71e6867791613dba44596e3b6e2b5ef50ca990451b7619d487c5dc0c95",
     "nodes/display/init.lua": "bc101897028c74cbda845cef3a0878dbecb2deac8d1d27acd42939824b72b901",
-    "ui/display_hud.lua": "a20e585e3e7046dca5b43e438759c70d9681785c16fa734256e846ae9e171674",
+    "ui/display_hud.lua": "3ebc614fac0ffce4be6cee0d3934fe7be5661d5acf49627e720246eca8cb6252",
     "nodes/pocket/init.lua": "fee3a8f7ddb5af10fcd11634bc10188ae784b842ffe7decf3a8f29bbb52d1c28",
     "ui/pocket_hud.lua": "bda87bd21ee84aa55a4ff19d3ba8efbb508a654ce881b47bba3e24ef465d8411"
   }

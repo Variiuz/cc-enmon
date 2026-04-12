@@ -301,6 +301,15 @@
       "notes": [
         "Fix the controller disk-persistence Y/N prompt so typed answers are accepted reliably after update and reboot"
       ]
+    },
+    {
+      "version": "0.4.0",
+      "manifest_revision": 3,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Fix controller and display HUD startup crashes caused by stale renderHistoryLine call sites"
+      ]
     }
   ]
 }
