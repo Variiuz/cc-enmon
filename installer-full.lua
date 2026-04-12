@@ -18,6 +18,7 @@ if _dir == "" then _dir = "/" end
 package.path = _dir .. "/?.lua;" .. _dir .. "/?/init.lua;" .. package.path
 
 local args = {...}
+local pmgr = require("lib/peripheral_mgr")
 
 local function composeReleaseLabel(baseVersion, manifestRevision)
     local revision = tonumber(manifestRevision) or 0
@@ -27,7 +28,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.3.9", 4)
+local VERSION    = composeReleaseLabel("0.3.9", 5)
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -1356,6 +1357,8 @@ cls()
 if rebootNow then
     os.reboot()
 end
+
+
 
 
 
