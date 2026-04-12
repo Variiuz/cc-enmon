@@ -33,6 +33,7 @@ local controller = {}
 local runtime_ui = nil
 local active_cfg = nil
 local rolloutRank
+local performUpdateCheck
 
 -- ── State ───────────────────────────────────────────────────────────────────────
 -- matrix_state: latest data from any matrix node
@@ -229,6 +230,22 @@ local function reportNodeChange(entry, change)
     if entry.controller_mismatch and (change.is_new or change.sender_changed or change.role_changed or change.controller_changed) then
         logLine("[ctrl] Node uses different controller ID: " .. tostring(entry.node_id) .. " -> " .. tostring(entry.controller_id), colors.orange)
     end
+end
+
+local function refreshSelfEntry(cfg, status)
+    local entry = rememberNode(cfg.get("node_id"), "controller", os.getComputerID(), {
+        local_version = state.updates.controller_version,
+        status = status or "online",
+        controller_id = os.getComputerID(),
+    })
+    if entry then
+        entry.local_version = state.updates.controller_version
+        entry.needs_update = state.updates.latest_version and version.isNewer(state.updates.latest_version, entry.local_version) or false
+        if not entry.needs_update then
+            entry.update_status = "online-current"
+        end
+    end
+    return entry
 end
 
 local function effectiveNodeStatus(entry)
@@ -760,7 +777,7 @@ local function adoptReplacement(cfg, node_id)
     return true
 end
 
-local function performUpdateCheck(cfg)
+performUpdateCheck = function(cfg)
     local info, err = updater.checkForUpdate(cfg.get("role"))
     if not info then
         logLine("[ctrl] Update check failed: " .. tostring(err), colors.red)
@@ -770,11 +787,11 @@ local function performUpdateCheck(cfg)
     state.updates.controller_version = info.current_version
     state.updates.latest_version = info.latest_version
 
-    local selfEntry = rememberNode(cfg.get("node_id"), "controller", os.getComputerID())
+    local selfEntry = refreshSelfEntry(cfg, "online")
     if selfEntry then
         selfEntry.local_version = info.current_version
         selfEntry.needs_update = info.needs_update
-        selfEntry.update_status = info.needs_update and "ready" or "noop"
+        selfEntry.update_status = info.needs_update and "ready" or "online-current"
     end
 
     logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ")", colors.lightBlue)
@@ -1009,7 +1026,7 @@ end
 function controller.run(cfg)
     active_cfg = cfg
     runtime_ui = runtime_panel.new("Controller")
-    runtime_ui.setHint("Monitor HUD includes update controls; terminal hotkeys are fallback only")
+    runtime_ui.setHint("F4 toggle monitor view  F5 check  F6 offer  F7 start  F8 abort  F9 self-update")
     logLine("[ctrl] Starting controller: " .. cfg.get("node_id"), colors.lime)
 
     -- Open network
@@ -1029,7 +1046,7 @@ function controller.run(cfg)
     -- Initialise HUD (sets up Basalt on the monitor)
     local mon_side = cfg.get("monitor_side")
     hud.init(mon_side, cfg, controller)
-    local selfEntry = rememberNode(cfg.get("node_id"), "controller", os.getComputerID())
+    local selfEntry = refreshSelfEntry(cfg, "online")
     if selfEntry then
         selfEntry.local_version = state.updates.controller_version
     end
@@ -1068,6 +1085,7 @@ function controller.run(cfg)
         while true do
             local _, id = os.pullEvent("timer")
             if id == display_timer then
+                refreshSelfEntry(cfg, "online")
                 -- Periodic DISPLAY_UPDATE broadcast
                 net.send(net.MSG.DISPLAY_UPDATE, buildDisplayPayload())
                 -- Refresh staleness-based alerts
@@ -1088,7 +1106,9 @@ function controller.run(cfg)
     local function key_loop()
         while true do
             local _, key = os.pullEvent("key")
-            if key == keys.f5 then
+            if key == keys.f4 then
+                hud.toggleView()
+            elseif key == keys.f5 then
                 performUpdateCheck(cfg)
             elseif key == keys.f6 then
                 createUpdateOffer(cfg, nil)

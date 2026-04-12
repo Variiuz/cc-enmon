@@ -22,6 +22,11 @@ local _updates = { row_buttons = {}, row_node_ids = {} }
 local _chrome = {}
 local renderUpdates
 
+local HEADER_H = 2
+local UPDATES_HEADER_ROWS = 4
+local UPDATES_FOOTER_ROWS = 1
+local UPDATES_LIST_START = 5
+
 local COLORS = {
     bg = colors.black,
     panel_bg = colors.black,
@@ -85,15 +90,16 @@ local function statusColor(status)
 end
 
 local function setView(view)
+    if view ~= "overview" and view ~= "updates" then
+        view = "overview"
+    end
     _view = view
     _overview.frame:setVisible(view == "overview")
     _updates.frame:setVisible(view == "updates")
-    if view == "overview" then
-        _chrome.overview_btn:setBackground(COLORS.tab_active_bg):setForeground(COLORS.tab_active_fg)
-        _chrome.updates_btn:setBackground(COLORS.tab_bg):setForeground(COLORS.tab_fg)
-    else
-        _chrome.overview_btn:setBackground(COLORS.tab_bg):setForeground(COLORS.tab_fg)
-        _chrome.updates_btn:setBackground(COLORS.tab_active_bg):setForeground(COLORS.tab_active_fg)
+    if _chrome.header then
+        local title = view == "overview" and "  ENMON  Controller / Overview" or "  ENMON  Controller / Updates"
+        local clock_w = 9
+        _chrome.header:setText(truncate(title, math.max(1, _monitor_w - clock_w - 1)))
     end
 end
 
@@ -107,7 +113,7 @@ local function ensureSelection(snapshot)
 end
 
 local function listRowsPerPage()
-    return math.max(4, _monitor_h - 10)
+    return math.max(2, (_monitor_h - HEADER_H) - UPDATES_HEADER_ROWS - UPDATES_FOOTER_ROWS - 2)
 end
 
 local function getSelectedNodeSnapshot(snapshot)
@@ -268,10 +274,11 @@ end
 
 local function buildUpdates(frame, w, h)
     local e = { row_buttons = {}, row_node_ids = {} }
-    e.frame = frame:addFrame():setPosition(1, 3):setSize(w, h - 2):setBackground(COLORS.bg)
+    e.frame = frame:addFrame():setPosition(1, HEADER_H + 1):setSize(w, h - HEADER_H):setBackground(COLORS.bg)
     local localFrame = e.frame
-    local content_h = h - 2
+    local content_h = h - HEADER_H
     local per_page = listRowsPerPage()
+    local selected_w = math.max(1, w - 13)
 
     e.summary = localFrame:addLabel()
         :setPosition(1, 1):setSize(w, 1):setBackground(COLORS.bg)
@@ -282,26 +289,26 @@ local function buildUpdates(frame, w, h)
         :setForeground(COLORS.muted):setText("Q:0 Pend:0 Conflict:0 Wrong:0 Offered:0")
 
     e.selected = localFrame:addLabel()
-        :setPosition(1, 3):setSize(math.max(1, w - 14), 1):setBackground(COLORS.bg)
+        :setPosition(1, 3):setSize(selected_w, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.value):setText("Selected: ALL eligible nodes")
 
     e.prev_btn = localFrame:addButton()
-        :setPosition(math.max(1, w - 13), 3):setSize(6, 1)
+        :setPosition(math.max(1, selected_w + 1), 3):setSize(6, 1)
         :setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
         :setText(" Prev ")
         :onClick(function() pageSelection(-1) end)
 
     e.next_btn = localFrame:addButton()
-        :setPosition(math.max(1, w - 6), 3):setSize(6, 1)
+        :setPosition(math.max(1, w - 5), 3):setSize(5, 1)
         :setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
-        :setText(" Next ")
+        :setText("Next ")
         :onClick(function() pageSelection(1) end)
 
     e.detail = localFrame:addLabel()
         :setPosition(1, 4):setSize(w, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.label):setText("Check for updates, offer to selected nodes, then start or abort.")
 
-    local list_y = 5
+    local list_y = UPDATES_LIST_START
     for index = 1, per_page do
         e.row_buttons[index] = localFrame:addButton()
             :setPosition(1, list_y + index - 1):setSize(w, 1)
@@ -478,9 +485,9 @@ renderUpdates = function(data)
 
             local label
             if row.node_id == nil then
-                label = "ALL  scope   " .. tostring(row.local_version or "--") .. "   offer/start eligible nodes"
+                label = truncate("ALL  scope  " .. tostring(row.local_version or "--") .. "  offer/start eligible nodes", _monitor_w)
             else
-                label = truncate(string.format("%-12s %-8s %-7s %s", tostring(row.node_id), tostring(row.role), tostring(row.local_version), tostring(row.status)), _monitor_w)
+                label = truncate(tostring(row.node_id) .. "  " .. tostring(row.role) .. "  " .. tostring(row.local_version) .. "  " .. tostring(row.status), _monitor_w)
             end
 
             button:setVisible(true)
@@ -512,19 +519,7 @@ function hud.init(mon_side, cfg, ctrl_node)
     _chrome.header = _frame:addLabel()
         :setPosition(1, 1):setSize(_monitor_w, 1)
         :setBackground(COLORS.header_bg):setForeground(COLORS.header_fg)
-        :setText("  ENMON  Controller")
-
-    _chrome.overview_btn = _frame:addButton()
-        :setPosition(math.max(2, _monitor_w - 30), 1):setSize(10, 1)
-        :setBackground(COLORS.tab_active_bg):setForeground(COLORS.tab_active_fg)
-        :setText(" Overview ")
-        :onClick(function() setView("overview") end)
-
-    _chrome.updates_btn = _frame:addButton()
-        :setPosition(math.max(12, _monitor_w - 19), 1):setSize(9, 1)
-        :setBackground(COLORS.tab_bg):setForeground(COLORS.tab_fg)
-        :setText(" Updates ")
-        :onClick(function() setView("updates") end)
+        :setText("  ENMON  Controller / Overview")
 
     _chrome.clock = _frame:addLabel()
         :setPosition(_monitor_w - 8, 1):setSize(9, 1)
@@ -539,6 +534,20 @@ function hud.init(mon_side, cfg, ctrl_node)
     _overview = buildOverview(_frame, _monitor_w, _monitor_h)
     _updates = buildUpdates(_frame, _monitor_w, _monitor_h)
     setView("overview")
+end
+
+function hud.setView(view)
+    setView(view)
+    renderUpdates(_data or {})
+    renderOverview(_data or {})
+end
+
+function hud.toggleView()
+    if _view == "overview" then
+        hud.setView("updates")
+    else
+        hud.setView("overview")
+    end
 end
 
 function hud.update(data)
