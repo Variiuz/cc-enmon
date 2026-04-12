@@ -7,7 +7,9 @@
 -- Hardware: ender modem + wired connection to induction_port
 
 local net  = require("lib/network")
+local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
+local update_service = require("lib/update_service")
 local util = require("lib/util")
 local runtime_panel = require("ui/runtime_panel")
 
@@ -117,6 +119,7 @@ function matrix.run(cfg)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
     openNet(cfg)
+    identity.announce(cfg, "matrix", "startup")
 
     -- Wait for the induction port to become available
     logLine("[matrix] Waiting for induction port...", colors.orange)
@@ -131,33 +134,48 @@ function matrix.run(cfg)
     local consecutive_errors = 0
     local MAX_ERRORS = 10
 
-    while true do
-        local data, err = pollMatrix(port)
+    local function poll_loop()
+        while true do
+            local data, err = pollMatrix(port)
 
-        if data then
-            consecutive_errors = 0
-            net.send(net.MSG.MATRIX_DATA, data)
-            updatePanel(cfg, "Online", util.formatPercent(util.fillFraction(data.energy, data.max_energy)), colors.lime)
-        else
-            consecutive_errors = consecutive_errors + 1
-            logLine("[matrix] Poll error (" .. consecutive_errors .. "): " .. tostring(err), colors.red)
-            updatePanel(cfg, "Error", tostring(err), colors.red)
+            if data then
+                consecutive_errors = 0
+                data = identity.decorateTelemetry("matrix", data)
+                net.send(net.MSG.MATRIX_DATA, data)
+                updatePanel(cfg, "Online", util.formatPercent(util.fillFraction(data.energy, data.max_energy)), colors.lime)
+            else
+                consecutive_errors = consecutive_errors + 1
+                logLine("[matrix] Poll error (" .. consecutive_errors .. "): " .. tostring(err), colors.red)
+                updatePanel(cfg, "Error", tostring(err), colors.red)
 
-            if consecutive_errors >= MAX_ERRORS then
-                -- Peripheral likely disconnected; attempt to reconnect
-                logLine("[matrix] Too many errors - waiting for induction port to reconnect...", colors.orange)
-                updatePanel(cfg, "Waiting", "Reconnecting induction port", colors.orange)
-                port = waitForPort()
-                if port then
-                    consecutive_errors = 0
-                    logLine("[matrix] Reconnected.", colors.lime)
-                    updatePanel(cfg, "Online", "Reconnected", colors.lime)
+                if consecutive_errors >= MAX_ERRORS then
+                    logLine("[matrix] Too many errors - waiting for induction port to reconnect...", colors.orange)
+                    updatePanel(cfg, "Waiting", "Reconnecting induction port", colors.orange)
+                    port = waitForPort()
+                    if port then
+                        consecutive_errors = 0
+                        logLine("[matrix] Reconnected.", colors.lime)
+                        updatePanel(cfg, "Online", "Reconnected", colors.lime)
+                    end
                 end
             end
-        end
 
-        os.sleep(POLL_INTERVAL)
+            os.sleep(POLL_INTERVAL)
+        end
     end
+
+    local function command_loop()
+        while true do
+            local msg = net.receive(nil, { net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
+            if msg then
+                update_service.handleMessage(cfg, msg, function(message)
+                    logLine(message, colors.lightBlue)
+                end)
+            end
+        end
+    end
+
+    parallel.waitForAll(poll_loop, command_loop)
 end
 
 return matrix

@@ -5,9 +5,11 @@
 -- Expected config keys: node_id, channel, shared_secret, monitor_side
 
 local net  = require("lib/network")
+local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
 local hud  = require("ui/display_hud")
 local runtime_panel = require("ui/runtime_panel")
+local update_service = require("lib/update_service")
 
 local MODEM_TYPE = "ender_modem"
 
@@ -36,15 +38,22 @@ function display.run(cfg)
 
     local mon_side = cfg.get("monitor_side")
     hud.init(mon_side)
+    identity.announce(cfg, "display", "startup")
     updatePanel("Online", "Waiting for controller updates", colors.lime)
 
     local function net_loop()
         while true do
-            local msg = net.receive(nil, {net.MSG.DISPLAY_UPDATE})
+            local msg = net.receive(nil, { net.MSG.DISPLAY_UPDATE, net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
             if msg then
-                hud.update(msg.payload)
-                local detail = (msg.payload and msg.payload.timestamp) or "Update received"
-                updatePanel("Online", detail, colors.lime)
+                if msg.type == net.MSG.DISPLAY_UPDATE then
+                    hud.update(msg.payload)
+                    local detail = (msg.payload and msg.payload.timestamp) or "Update received"
+                    updatePanel("Online", detail, colors.lime)
+                else
+                    update_service.handleMessage(cfg, msg, function(message)
+                        logLine(message, colors.lightBlue)
+                    end)
+                end
             end
         end
     end
@@ -53,7 +62,14 @@ function display.run(cfg)
         hud.run()
     end
 
-    parallel.waitForAll(net_loop, hud_loop)
+    local function hello_loop()
+        while true do
+            os.sleep(10)
+            identity.announce(cfg, "display", "heartbeat")
+        end
+    end
+
+    parallel.waitForAll(net_loop, hud_loop, hello_loop)
 end
 
 return display

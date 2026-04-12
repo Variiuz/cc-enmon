@@ -1,13 +1,17 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "base_url": "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/",
   "files": {
     "common": [
       "enmon.lua",
       "lib/config.lua",
       "lib/util.lua",
+      "lib/version.lua",
       "lib/hmac.lua",
       "lib/network.lua",
+      "lib/node_identity.lua",
+      "lib/updater.lua",
+      "lib/update_service.lua",
       "lib/peripheral_mgr.lua",
       "ui/setup.lua",
       "ui/runtime_panel.lua",

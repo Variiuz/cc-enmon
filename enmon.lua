@@ -4,16 +4,23 @@
 -- Reads enmon.cfg written by installer.lua and dispatches to the role module.
 -- If no config exists, print an error and exit (run installer.lua first).
 
-local VERSION = "0.2.0"
-
 -- Inject the script's directory into the package path so require() works
 -- regardless of where the file lives on the CC filesystem.
 local _dir = fs.getDir(shell.getRunningProgram())
 if _dir == "" then _dir = "/" end
 package.path = _dir .. "/?.lua;" .. _dir .. "/?/init.lua;" .. package.path
 
+local args = {...}
+
 local config = require("lib/config")
+local updater = require("lib/updater")
+local version = require("lib/version")
+
+local resumed, resumeErr = updater.resumeInterruptedUpdate()
+
 local runtime_panel = require("ui/runtime_panel")
+
+local VERSION = version.getVersion()
 
 local function cls() term.clear(); term.setCursorPos(1, 1) end
 
@@ -49,6 +56,10 @@ boot_ui.setSummary({
 })
 boot_ui.setHint("Run installer.lua if this node is not configured")
 
+if not resumed then
+    fatal("Interrupted update recovery failed: " .. tostring(resumeErr))
+end
+
 -- First run: no config found
 if not config.exists() then
     boot_ui.setSection("Configuration Missing")
@@ -61,6 +72,48 @@ if not config.exists() then
     return
 end
 config.load()
+
+if args[1] == "update" then
+    boot_ui.setSection("Updater")
+    boot_ui.setSummary({
+        { "Version", VERSION },
+        { "Role", tostring(config.get("role")) },
+        { "Status", "Checking for updates..." },
+    })
+    boot_ui.setHint("Local self-update from manifest")
+
+    local ok, result = updater.applyLocalUpdate({
+        role = config.get("role"),
+        logger = function(message)
+            if boot_ui then
+                boot_ui.log(message, colors.lightBlue)
+            end
+        end,
+    })
+
+    if not ok then
+        fatal("Update failed: " .. tostring(result))
+    end
+
+    if not result.updated then
+        boot_ui.setSummary({
+            { "Version", VERSION },
+            { "Role", tostring(config.get("role")) },
+            { "Status", "Already up to date", colors.lime, colors.white },
+        })
+        boot_ui.setHint("Press any key to exit")
+        os.pullEvent("key")
+        return
+    end
+
+    boot_ui.setSummary({
+        { "From", tostring(result.from_version) },
+        { "To", tostring(result.to_version) },
+        { "Status", "Update complete - rebooting", colors.lime, colors.white },
+    })
+    os.sleep(0.3)
+    os.reboot()
+end
 
 -- ── Role dispatch ──────────────────────────────────────────────────────────────
 local role = config.get("role")

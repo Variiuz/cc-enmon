@@ -14,8 +14,18 @@
 --   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/installer.lua installer.lua
 --   installer
 
-local VERSION    = "0.2.0"
-local BASE_URL   = "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/"
+local function readManifestValue(key, fallback)
+    if not fs.exists("manifest.json") then return fallback end
+    local file = fs.open("manifest.json", "r")
+    if not file then return fallback end
+    local raw = file.readAll()
+    file.close()
+    local pattern = '"' .. key .. '"%s*:%s*"([^"]+)"'
+    return raw:match(pattern) or fallback
+end
+
+local VERSION    = readManifestValue("version", "0.3.0")
+local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/refs/heads/main/release/basalt-core.lua"
 

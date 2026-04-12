@@ -6,8 +6,10 @@
 -- Expected config keys: node_id, channel, controller_id, shared_secret
 
 local net  = require("lib/network")
+local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
 local hud  = require("ui/pocket_hud")
+local update_service = require("lib/update_service")
 
 local POLL_INTERVAL = 2
 local MODEM_TYPE    = "ender_modem"
@@ -22,27 +24,35 @@ function pocket.run(cfg)
     net.open(modem, cfg.get("channel"), cfg.get("shared_secret"), cfg.get("node_id"))
 
     hud.init()
+    identity.announce(cfg, "pocket", "startup")
 
     local ctrl_id = cfg.get("controller_id")
     local my_id   = os.getComputerID()
 
     local function request_loop()
+        local next_hello = os.clock() + 10
         while true do
-            net.send(net.MSG.POCKET_REQUEST, { from = my_id })
+            net.send(net.MSG.POCKET_REQUEST, identity.decorateTelemetry("pocket", { from = my_id }))
+            if os.clock() >= next_hello then
+                identity.announce(cfg, "pocket", "heartbeat")
+                next_hello = os.clock() + 10
+            end
             os.sleep(POLL_INTERVAL)
         end
     end
 
     local function receive_loop()
         while true do
-            local msg = net.receive(POLL_INTERVAL * 3, {net.MSG.POCKET_DATA})
+            local msg = net.receive(POLL_INTERVAL * 3, { net.MSG.POCKET_DATA, net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
             if msg then
-                -- Filter: only accept responses intended for us
-                if msg.payload.for_sender == nil or msg.payload.for_sender == my_id then
-                    -- Also only from the configured controller
-                    if ctrl_id == nil or msg.sender_id == ctrl_id then
-                        hud.update(msg.payload)
+                if msg.type == net.MSG.POCKET_DATA then
+                    if msg.payload.for_sender == nil or msg.payload.for_sender == my_id then
+                        if ctrl_id == nil or msg.sender_id == ctrl_id then
+                            hud.update(msg.payload)
+                        end
                     end
+                else
+                    update_service.handleMessage(cfg, msg, print)
                 end
             end
         end

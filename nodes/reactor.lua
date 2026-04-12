@@ -8,7 +8,9 @@
 -- Hardware: ender modem + wired connection to reactor CC port
 
 local net  = require("lib/network")
+local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
+local update_service = require("lib/update_service")
 local runtime_panel = require("ui/runtime_panel")
 
 local POLL_INTERVAL  = 2   -- seconds between broadcasts
@@ -106,6 +108,7 @@ function reactor.run(cfg)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
     openNet(cfg)
+    identity.announce(cfg, "reactor", "startup")
 
     updatePanel(cfg, "Waiting", "Reactor peripheral", colors.orange)
     local port = waitForReactor()
@@ -124,6 +127,7 @@ function reactor.run(cfg)
             local data, err = pollReactor(port)
             if data then
                 consecutive_errors = 0
+                data = identity.decorateTelemetry("reactor", data)
                 net.send(net.MSG.REACTOR_DATA, data)
                 local detail = (data.active and "ON" or "OFF") .. "  " .. tostring(data.produced_last_t or 0) .. " RF/t"
                 updatePanel(cfg, "Online", detail, colors.lime)
@@ -154,14 +158,19 @@ function reactor.run(cfg)
 
     local function cmd_loop()
         while true do
-            local msg, _ = net.receive(nil, {net.MSG.CMD_REACTOR_SET})
+            local msg, _ = net.receive(nil, { net.MSG.CMD_REACTOR_SET, net.MSG.UPDATE_CHECK, net.MSG.UPDATE_OFFER, net.MSG.UPDATE_START, net.MSG.UPDATE_ABORT })
             if msg then
-                -- Only accept commands from the configured controller
-                local ctrl_id = cfg.get("controller_id")
-                if ctrl_id == nil or msg.sender_id == ctrl_id then
-                    applyCommand(port, msg)
+                if msg.type == net.MSG.CMD_REACTOR_SET then
+                    local ctrl_id = cfg.get("controller_id")
+                    if ctrl_id == nil or msg.sender_id == ctrl_id then
+                        applyCommand(port, msg)
+                    else
+                        logLine("[reactor] Ignoring CMD from unknown sender: " .. tostring(msg.sender_id), colors.red)
+                    end
                 else
-                    logLine("[reactor] Ignoring CMD from unknown sender: " .. tostring(msg.sender_id), colors.red)
+                    update_service.handleMessage(cfg, msg, function(message)
+                        logLine(message, colors.lightBlue)
+                    end)
                 end
             end
         end

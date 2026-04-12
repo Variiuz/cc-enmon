@@ -3,10 +3,9 @@
 -- Runs on the computer terminal using Basalt 2.
 
 local basalt = require("lib/basalt")
+local version = require("lib/version")
 
 local editor = {}
-
-local VERSION = "0.2.0"
 
 local COLORS = {
     root_bg       = colors.lightGray,
@@ -131,10 +130,23 @@ local function safeSet(element, key, value)
     end
 end
 
+local function runBasaltLoop()
+    if type(basalt.run) == "function" then
+        basalt.run()
+        return
+    end
+    if type(basalt.autoUpdate) == "function" then
+        basalt.autoUpdate()
+        return
+    end
+    error("Unsupported Basalt version: missing run loop entry point", 0)
+end
+
 function editor.run(cfg)
     local w, h = term.getSize()
     local action = "exit"
     local dirty = false
+    local currentVersion = version.getVersion()
 
     local edits = {
         role = cfg.role,
@@ -166,9 +178,9 @@ function editor.run(cfg)
         :setText(" ENMON Configurator")
 
     frame:addLabel()
-        :setPosition(math.max(1, w - #("v" .. VERSION)), 1):setSize(#("v" .. VERSION), 1)
+        :setPosition(math.max(1, w - #("v" .. currentVersion)), 1):setSize(#("v" .. currentVersion), 1)
         :setBackground(COLORS.header_bg):setForeground(COLORS.header_fg)
-        :setText("v" .. VERSION)
+        :setText("v" .. currentVersion)
 
     local section = frame:addLabel()
         :setPosition(1, 2):setSize(w, 1)
@@ -503,7 +515,7 @@ function editor.run(cfg)
 
     refreshSummary()
     showPanel("summary")
-    basalt.autoUpdate()
+    runBasaltLoop()
 
     return action
 end
