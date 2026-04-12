@@ -48,7 +48,7 @@ end
 
 -- ── Bootstrap ──────────────────────────────────────────────────────────────────
 cls()
-boot_ui = runtime_panel.new("Launcher")
+boot_ui = runtime_panel.new("Launcher", { interactive_scroll = true })
 boot_ui.setSummary({
     { "Version", VERSION },
     { "Computer", tostring(os.getComputerID()) },

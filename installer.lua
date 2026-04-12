@@ -24,7 +24,7 @@ local function readManifestValue(key, fallback)
     return raw:match(pattern) or fallback
 end
 
-local VERSION    = readManifestValue("version", "0.3.0")
+local VERSION    = readManifestValue("version", "0.3.1")
 local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/refs/heads/main/release/basalt-core.lua"
@@ -858,22 +858,105 @@ local function makeInstallLogger()
     local win = drawChrome("Installing")
     local _, h = win.getSize()
     local lines = {}
+    local scroll_offset = 0
+
+    local function maxOffset()
+        return math.max(0, #lines - h)
+    end
+
+    local function clampOffset()
+        if scroll_offset < 0 then scroll_offset = 0 end
+        local limit = maxOffset()
+        if scroll_offset > limit then scroll_offset = limit end
+    end
 
     local function redraw()
+        clampOffset()
         clearWindow(win, STYLE.root_bg, STYLE.root_fg)
-        local start = math.max(1, #lines - h + 1)
+        local start = math.max(1, (#lines - h + 1) - scroll_offset)
+        local finish = math.min(#lines, start + h - 1)
         local row = 1
-        for i = start, #lines do
+        for i = start, finish do
             local entry = lines[i]
             writeAt(win, 1, row, entry.text, entry.fg or STYLE.root_fg, STYLE.root_bg)
             row = row + 1
         end
-        drawHint("Do not power off this computer while files are downloading.")
+
+        local hint = "Up/down, PgUp/PgDn, mouse wheel: scroll"
+        if scroll_offset == 0 then
+            hint = hint .. "   Live"
+        else
+            hint = hint .. string.format("   %d lines above latest", scroll_offset)
+        end
+        drawHint(hint)
+    end
+
+    local function scroll(delta)
+        if delta == 0 then return end
+        scroll_offset = scroll_offset + delta
+        clampOffset()
+        redraw()
+    end
+
+    local function followLatest()
+        if scroll_offset ~= 0 then
+            scroll_offset = 0
+            redraw()
+        end
+    end
+
+    local function handleEvent(event, a, b, c)
+        if event == "mouse_scroll" then
+            local _, win_h = win.getSize()
+            if c >= 4 and c < (4 + win_h) then
+                scroll(a)
+                return true
+            end
+        elseif event == "key" then
+            if a == keys.up then
+                scroll(1)
+                return true
+            elseif a == keys.down then
+                scroll(-1)
+                return true
+            elseif a == keys.pageUp then
+                scroll(math.max(1, math.floor(h / 2)))
+                return true
+            elseif a == keys.pageDown then
+                scroll(-math.max(1, math.floor(h / 2)))
+                return true
+            elseif a == keys.home then
+                scroll_offset = maxOffset()
+                redraw()
+                return true
+            elseif a == keys["end"] then
+                followLatest()
+                return true
+            end
+        end
+        return false
+    end
+
+    local function pumpInput()
+        local timer = os.startTimer(0)
+        while true do
+            local event, a, b, c = os.pullEvent()
+            if event == "timer" and a == timer then
+                break
+            end
+            handleEvent(event, a, b, c)
+        end
     end
 
     local function log(text, fg)
         lines[#lines + 1] = { text = tostring(text), fg = fg }
-        redraw()
+        if scroll_offset == 0 then
+            redraw()
+        else
+            clampOffset()
+            redraw()
+        end
+        pumpInput()
     end
 
     redraw()

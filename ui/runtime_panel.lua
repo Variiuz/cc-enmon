@@ -30,8 +30,9 @@ local function truncate(text, width)
     return text:sub(1, width - 3) .. "..."
 end
 
-function panel.new(section)
+function panel.new(section, options)
     local root = term.current()
+    options = options or {}
     local state = {
         title = "ENMON Runtime",
         section = section or "Status",
@@ -39,9 +40,47 @@ function panel.new(section)
         summary = {},
         logs = {},
         max_logs = 64,
+        scroll_offset = 0,
+        interactive_scroll = options.interactive_scroll == true,
     }
 
     local self = {}
+
+    local function computeLogHeight(h)
+        return math.max(1, h - 10 - #state.summary)
+    end
+
+    local function maxOffset(log_height)
+        return math.max(0, #state.logs - log_height)
+    end
+
+    local function clampOffset(log_height)
+        if state.scroll_offset < 0 then state.scroll_offset = 0 end
+        local limit = maxOffset(log_height)
+        if state.scroll_offset > limit then state.scroll_offset = limit end
+    end
+
+    local function buildHint(log_height)
+        local hint = tostring(state.hint or "")
+        if not state.interactive_scroll then
+            return hint
+        end
+
+        local scroll_hint = "Up/down PgUp/PgDn Home/End"
+        if state.scroll_offset == 0 then
+            scroll_hint = scroll_hint .. " Live"
+        else
+            scroll_hint = scroll_hint .. string.format(" %d lines above latest", state.scroll_offset)
+        end
+
+        local width = select(1, root.getSize())
+        if hint == "" then
+            return truncate(scroll_hint, math.max(1, width - 2))
+        end
+
+        local prefix = truncate(hint, math.max(1, width - #scroll_hint - 5))
+        return prefix .. " | " .. scroll_hint
+    end
 
     local function writeAt(target, x, y, text, fg, bg)
         local w = select(1, target.getSize())
@@ -98,17 +137,67 @@ function panel.new(section)
         writeAt(content, 1, row, "Activity", STYLE.root_fg, STYLE.root_bg)
         row = row + 1
 
-        local log_height = math.max(1, h - 5 - row + 1)
-        local start = math.max(1, #state.logs - log_height + 1)
-        for i = start, #state.logs do
+        local log_height = computeLogHeight(h)
+        clampOffset(log_height)
+        local start = math.max(1, (#state.logs - log_height + 1) - state.scroll_offset)
+        local finish = math.min(#state.logs, start + log_height - 1)
+        for i = start, finish do
             local entry = state.logs[i]
             writeAt(content, 1, row, entry.text, entry.fg or STYLE.root_fg, STYLE.root_bg)
             row = row + 1
         end
 
         fillLine(h - 1, STYLE.root_bg, STYLE.hint_fg)
-        writeAt(root, 2, h - 1, state.hint, STYLE.hint_fg, STYLE.root_bg)
+        writeAt(root, 2, h - 1, buildHint(log_height), STYLE.hint_fg, STYLE.root_bg)
         fillLine(h, STYLE.root_bg, STYLE.root_fg)
+    end
+
+    local function scroll(delta)
+        local _, h = root.getSize()
+        local log_height = computeLogHeight(h)
+        state.scroll_offset = state.scroll_offset + delta
+        clampOffset(log_height)
+        draw()
+    end
+
+    local function followLatest()
+        if state.scroll_offset ~= 0 then
+            state.scroll_offset = 0
+            draw()
+        end
+    end
+
+    local function pumpInput()
+        if not state.interactive_scroll then return end
+
+        local _, h = root.getSize()
+        local log_height = computeLogHeight(h)
+        local step = math.max(1, math.floor(log_height / 2))
+        local timer = os.startTimer(0)
+
+        while true do
+            local event, a = os.pullEvent()
+            if event == "timer" and a == timer then
+                break
+            elseif event == "key" then
+                if a == keys.up then
+                    scroll(1)
+                elseif a == keys.down then
+                    scroll(-1)
+                elseif a == keys.pageUp then
+                    scroll(step)
+                elseif a == keys.pageDown then
+                    scroll(-step)
+                elseif a == keys.home then
+                    state.scroll_offset = maxOffset(log_height)
+                    draw()
+                elseif a == keys["end"] then
+                    followLatest()
+                end
+            elseif event == "mouse_scroll" then
+                scroll(a)
+            end
+        end
     end
 
     function self.setSection(text)
@@ -132,10 +221,12 @@ function panel.new(section)
             table.remove(state.logs, 1)
         end
         draw()
+        pumpInput()
     end
 
     function self.clearLogs()
         state.logs = {}
+        state.scroll_offset = 0
         draw()
     end
 

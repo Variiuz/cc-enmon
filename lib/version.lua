@@ -5,7 +5,7 @@ local version = {}
 
 local MANIFEST_PATH = "manifest.json"
 local FALLBACK = {
-    version = "0.3.0",
+    version = "0.3.1",
     base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/",
 }
 
