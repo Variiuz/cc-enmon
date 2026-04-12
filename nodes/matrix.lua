@@ -27,12 +27,14 @@ local MATRIX_TYPES  = {
 
 local matrix = {}
 local runtime_ui = nil
+local BRANCH = version.getBranchLabel()
 
 local function updatePanel(cfg, status, detail, color)
     if not runtime_ui then return end
     runtime_ui.setSummary({
         { "Node", tostring(cfg.get("node_id")) },
         { "Version", tostring(version.getVersion()) },
+        { "Branch", tostring(BRANCH) },
         { "Channel", tostring(cfg.get("channel")) },
         { "Computer", tostring(os.getComputerID()) },
         { "Status", status or "Idle", color or colors.black, colors.white },

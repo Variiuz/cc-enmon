@@ -35,6 +35,7 @@ local UPDATE_ORDER = {
 local controller = {}
 local runtime_ui = nil
 local active_cfg = nil
+local BRANCH = version.getBranchLabel()
 local rolloutRank
 local performUpdateCheck
 local refreshPanel
@@ -671,6 +672,7 @@ refreshPanel = function(cfg)
     runtime_ui.setSummary({
         { "Computer ID", tostring(os.getComputerID()), colors.white, colors.blue },
         { "Node", tostring(cfg.get("node_id")) },
+        { "Branch", tostring(BRANCH) },
         { "Updates", updates_line },
         { "Channel", tostring(cfg.get("channel")) },
         { "Matrix", matrix_status, matrix_fg, matrix_bg },

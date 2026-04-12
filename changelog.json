@@ -143,6 +143,26 @@
         "Adoption-based onboarding flow",
         "Development branch test release"
       ]
+    },
+    {
+      "version": "0.3.8",
+      "manifest_revision": 5,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add branch-selecting bootstrap installer",
+        "Show active branch in runtime TUI"
+      ]
+    },
+    {
+      "version": "0.3.8",
+      "manifest_revision": 6,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Move branch tracking out of manifest.json",
+        "Store selected branch in enmon-source.json"
+      ]
     }
   ]
 }

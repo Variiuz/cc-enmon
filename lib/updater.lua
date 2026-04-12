@@ -200,7 +200,7 @@ function updater.fetchRemoteManifest(base_url)
     if type(manifest) ~= "table" then
         return nil, "Remote manifest parse error"
     end
-    manifest.base_url = manifest.base_url or root
+    manifest.base_url = root
     return manifest
 end
 

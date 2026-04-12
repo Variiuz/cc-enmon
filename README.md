@@ -11,6 +11,8 @@ installer
 
 Run on each computer. Pick a role, follow the wizard.
 
+The bootstrap `installer.lua` now lets you choose a branch first, then downloads the full installer wizard from that branch. The installed node keeps using that branch for later updates through its local branch selection file rather than `manifest.json`.
+
 If `enmon.cfg` already exists, the installer now detects it and lets you reuse that config as a starting point before reviewing each page again.
 
 Controller setup now only needs the node identity, channel, and controller-specific hardware/settings. New non-controller nodes on the same channel come up as `unlinked`, advertise a short claim code, and must be explicitly adopted from the controller before they start sending operational data.
@@ -100,6 +102,7 @@ It updates:
 
 - `manifest.json`
 - `installer.lua`
+- `installer-full.lua`
 - `lib/version.lua`
 - `changelog.json`
 

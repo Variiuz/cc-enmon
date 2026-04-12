@@ -19,6 +19,7 @@ local resumed, resumeErr = updater.resumeInterruptedUpdate()
 local runtime_panel = require("ui/runtime_panel")
 
 local VERSION = version.getVersion()
+local BRANCH = version.getBranchLabel()
 local unpackArgs = table.unpack or unpack
 
 local function cls() term.clear(); term.setCursorPos(1, 1) end
@@ -30,6 +31,7 @@ local function fatal(msg)
         boot_ui.setSection("Fatal Error")
         boot_ui.setSummary({
             { "Version", VERSION },
+            { "Branch", BRANCH },
             { "Computer", tostring(os.getComputerID()) },
             { "Error", tostring(msg), colors.red, colors.white },
         })
@@ -50,6 +52,7 @@ cls()
 boot_ui = runtime_panel.new("Launcher", { interactive_scroll = true })
 boot_ui.setSummary({
     { "Version", VERSION },
+    { "Branch", BRANCH },
     { "Computer", tostring(os.getComputerID()) },
     { "Status", "Loading configuration..." },
 })
@@ -73,6 +76,7 @@ if not config.exists() then
     boot_ui.setSection("Configuration Missing")
     boot_ui.setSummary({
         { "Version", VERSION },
+        { "Branch", BRANCH },
         { "Computer", tostring(os.getComputerID()) },
         { "Status", "No configuration found", colors.red, colors.white },
     })
@@ -103,6 +107,7 @@ end
 boot_ui.setSection("Launching")
 boot_ui.setSummary({
     { "Version", VERSION },
+    { "Branch", BRANCH },
     { "Role", tostring(role) },
     { "Node", tostring(config.get("node_id")) },
     { "Channel", tostring(config.get("channel")) },

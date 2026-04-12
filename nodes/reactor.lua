@@ -29,12 +29,14 @@ local REACTOR_TYPES  = {
 
 local reactor = {}
 local runtime_ui = nil
+local BRANCH = version.getBranchLabel()
 
 local function updatePanel(cfg, status, detail, color)
     if not runtime_ui then return end
     runtime_ui.setSummary({
         { "Node", tostring(cfg.get("node_id")) },
         { "Version", tostring(version.getVersion()) },
+        { "Branch", tostring(BRANCH) },
         { "Channel", tostring(cfg.get("channel")) },
         { "Controller", tostring(cfg.get("controller_id") or "--") },
         { "Status", status or "Idle", color or colors.black, colors.white },

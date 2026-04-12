@@ -17,6 +17,7 @@ local version = require("lib/version")
 local MODEM_TYPE = "ender_modem"
 
 local display = {}
+local BRANCH = version.getBranchLabel()
 
 function display.run(cfg)
     local claim_code = controller_link.newClaimCode()
@@ -26,6 +27,7 @@ function display.run(cfg)
         runtime_ui.setSummary({
             { "Node", tostring(cfg.get("node_id")) },
             { "Version", tostring(version.getVersion()) },
+            { "Branch", tostring(BRANCH) },
             { "Channel", tostring(cfg.get("channel")) },
             { "Monitor", tostring(cfg.get("monitor_side")) },
             { "Status", status, color or colors.black, colors.white },

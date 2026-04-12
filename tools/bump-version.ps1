@@ -20,6 +20,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $manifestPath = Join-Path $repoRoot 'manifest.json'
 $installerPath = Join-Path $repoRoot 'installer.lua'
+$installerFullPath = Join-Path $repoRoot 'installer-full.lua'
 $versionPath = Join-Path $repoRoot 'lib/version.lua'
 $changelogPath = Join-Path $repoRoot 'changelog.json'
 $basaltUrl = 'https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua'
@@ -70,6 +71,23 @@ function Update-FileVersionString {
     }
     $updated = $regex.Replace($raw, $Replacement, 1)
     Set-Content -Path $Path -Value $updated
+}
+
+function Get-FileRegexCapture {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern
+    )
+
+    $raw = Get-Content -Path $Path -Raw
+    $match = [regex]::Match($raw, $Pattern)
+    if (-not $match.Success) {
+        return $null
+    }
+    return $match.Groups[1].Value
 }
 
 function Get-NormalizedUtf8Bytes {
@@ -198,7 +216,7 @@ function Set-ManifestRevision {
 
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $currentVersion = [string]$manifest.version
-$currentBaseUrl = [string]$manifest.base_url
+$currentBaseUrl = Get-FileRegexCapture -Path $versionPath -Pattern '(?m)^\s*base_url = "([^"]+)",' 
 $currentManifestRevision = 0
 if ($manifest.PSObject.Properties.Name -contains 'manifest_revision') {
     $currentManifestRevision = [int]$manifest.manifest_revision
@@ -219,7 +237,7 @@ $manifestRevision = if ($Hotfix) { $currentManifestRevision + 1 } else { 0 }
 $effectiveBaseUrl = if ($PSBoundParameters.ContainsKey('BaseUrl') -and $BaseUrl) { $BaseUrl } else { $currentBaseUrl }
 
 if (-not $effectiveBaseUrl) {
-    throw 'A manifest base_url is required.'
+    throw 'A release base URL is required.'
 }
 
 if (-not $effectiveBaseUrl.EndsWith('/')) {
@@ -227,18 +245,22 @@ if (-not $effectiveBaseUrl.EndsWith('/')) {
 }
 
 $manifest.version = $Version
-$manifest.base_url = $effectiveBaseUrl
+if ($manifest.PSObject.Properties.Name -contains 'base_url') {
+    $manifest.PSObject.Properties.Remove('base_url')
+}
 Set-ManifestRevision -Manifest $manifest -ManifestRevision $manifestRevision
 
-Update-FileVersionString -Path $installerPath -Pattern 'local VERSION\s*=\s*composeReleaseLabel\(readManifestValue\("version", "[^"]+"\), readManifestNumber\("manifest_revision", \d+\)\)' -Replacement ('local VERSION    = composeReleaseLabel(readManifestValue("version", "{0}"), readManifestNumber("manifest_revision", {1}))' -f $Version, $manifestRevision)
-Update-FileVersionString -Path $installerPath -Pattern 'local BASE_URL\s*=\s*readManifestValue\("base_url", "[^"]+"\)' -Replacement ('local BASE_URL   = readManifestValue("base_url", "{0}")' -f $effectiveBaseUrl)
+Update-FileVersionString -Path $installerFullPath -Pattern 'local VERSION\s*=\s*composeReleaseLabel\("[^"]+", \d+\)' -Replacement ('local VERSION    = composeReleaseLabel("{0}", {1})' -f $Version, $manifestRevision)
+Update-FileVersionString -Path $installerFullPath -Pattern 'local DEFAULT_BASE_URL\s*=\s*"[^"]+"' -Replacement ('local DEFAULT_BASE_URL = "{0}"' -f $effectiveBaseUrl)
 Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*version = "[^"]+",' -Replacement ('    version = "{0}",' -f $Version)
 Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*manifest_revision = \d+,' -Replacement ('    manifest_revision = {0},' -f $manifestRevision)
 Update-FileVersionString -Path $versionPath -Pattern '(?m)^\s*base_url = "[^"]+",' -Replacement ('    base_url = "{0}",' -f $effectiveBaseUrl)
 
 $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
 $manifest.version = $Version
-$manifest.base_url = $effectiveBaseUrl
+if ($manifest.PSObject.Properties.Name -contains 'base_url') {
+    $manifest.PSObject.Properties.Remove('base_url')
+}
 Set-ManifestRevision -Manifest $manifest -ManifestRevision $manifestRevision
 Update-ManifestHashes -Manifest $manifest -RepoRoot $repoRoot -BasaltUrl $basaltUrl
 $manifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath

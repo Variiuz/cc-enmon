@@ -4,12 +4,43 @@
 local version = {}
 
 local MANIFEST_PATH = "manifest.json"
+local SOURCE_PATH = "enmon-source.json"
+local RAW_ROOT = "https://raw.githubusercontent.com/Variiuz/cc-enmon/"
 local FALLBACK = {
     version = "0.3.8",
-    manifest_revision = 4,
+    manifest_revision = 6,
     base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/",
     rollout_policy = "controller-first",
 }
+
+local function branchFromBaseUrl(url)
+    local trimmed = tostring(url or ""):gsub("/+$", "")
+    return trimmed:match("^https?://raw%.githubusercontent%.com/[^/]+/[^/]+/([^/]+)$")
+        or trimmed:match("^https?://github%.com/[^/]+/[^/]+/raw/([^/]+)$")
+        or trimmed:match("/([^/]+)$")
+end
+
+local function branchToBaseUrl(branch)
+    if type(branch) ~= "string" or branch == "" then return nil end
+    return RAW_ROOT .. branch:gsub("^/+", ""):gsub("/+$", "") .. "/"
+end
+
+local function parseSource(raw)
+    if type(raw) ~= "string" or raw == "" then return nil end
+
+    if type(textutils.unserializeJSON) == "function" then
+        local ok, data = pcall(textutils.unserializeJSON, raw)
+        if ok and type(data) == "table" then
+            return data
+        end
+    end
+
+    local branch = raw:match('"branch"%s*:%s*"([^"]+)"')
+    if branch then
+        return { branch = branch }
+    end
+    return nil
+end
 
 local function parseManifest(raw)
     if type(raw) ~= "string" or raw == "" then return nil end
@@ -49,6 +80,18 @@ function version.parseManifest(raw)
     return parseManifest(raw)
 end
 
+function version.loadSource(path)
+    local sourcePath = path or SOURCE_PATH
+    if not fs.exists(sourcePath) then return nil end
+
+    local file = fs.open(sourcePath, "r")
+    if not file then return nil end
+    local raw = file.readAll()
+    file.close()
+
+    return parseSource(raw)
+end
+
 function version.composeRelease(rawVersion, manifestRevision)
     local base = tostring(rawVersion or FALLBACK.version)
     local revision = tonumber(manifestRevision) or 0
@@ -73,8 +116,35 @@ function version.getVersion(path)
 end
 
 function version.getBaseUrl(path)
+    local source = version.loadSource(path)
+    if source and type(source.branch) == "string" and source.branch ~= "" then
+        return branchToBaseUrl(source.branch) or FALLBACK.base_url
+    end
+
     local manifest = version.loadManifest(path)
     return (manifest and manifest.base_url) or FALLBACK.base_url
+end
+
+function version.getBranch(path)
+    local source = version.loadSource(path)
+    if source and type(source.branch) == "string" and source.branch ~= "" then
+        return source.branch
+    end
+
+    local branch = branchFromBaseUrl(version.getBaseUrl(path))
+
+    if branch == nil or branch == "" then
+        return "unknown"
+    end
+    return branch
+end
+
+function version.getBranchLabel(path)
+    local branch = version.getBranch(path)
+    if branch == "master" or branch == "main" then
+        return "stable"
+    end
+    return branch
 end
 
 function version.getRolloutPolicy(path)
@@ -111,6 +181,12 @@ function version.isNewer(candidate, current)
 end
 
 return version
+
+
+
+
+
+
 
 
 

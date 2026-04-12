@@ -12,6 +12,7 @@ local updater = require("lib/updater")
 local version = require("lib/version")
 
 local VERSION = version.getVersion()
+local BRANCH = version.getBranchLabel()
 
 local function println(text, color)
     if color then
@@ -32,6 +33,7 @@ end
 
 local function showUsage()
     println("ENMON CLI " .. tostring(VERSION), colors.cyan)
+    println("Branch: " .. tostring(BRANCH))
     println("Usage: enmon-cli <command>")
     println("Commands:")
     println("  update        Refresh only if remote version is newer")
@@ -88,6 +90,7 @@ local forceUpdate = command == "reinstall" or hasArg("force") or hasArg("--force
 local assumeYes = hasArg("--yes") or hasArg("-y")
 
 println("ENMON CLI " .. tostring(VERSION), colors.cyan)
+println("Branch: " .. tostring(BRANCH))
 println("Role: " .. tostring(config.get("role")))
 if command == "verify" then
     println("Mode: Verify")
