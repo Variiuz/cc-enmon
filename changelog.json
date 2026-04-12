@@ -163,6 +163,17 @@
         "Move branch tracking out of manifest.json",
         "Store selected branch in enmon-source.json"
       ]
+    },
+    {
+      "version": "0.3.9",
+      "manifest_revision": 0,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add branch-selecting bootstrap installer and full installer handoff",
+        "Store branch selection locally in enmon-source.json",
+        "Show active branch in runtime UI and CLI"
+      ]
     }
   ]
 }
