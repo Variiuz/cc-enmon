@@ -1334,7 +1334,7 @@ end
 function controller.run(cfg)
     active_cfg = cfg
     runtime_ui = runtime_panel.new("Controller")
-    runtime_ui.setHint("F2 Config | F4 View | F5 Check | F6 Offer | F7 Start | F8 Abort | F9 Self")
+    runtime_ui.setHint("C Config | F4 View | F5 Check | F6 Offer | F7 Start | F8 Abort | F9 Self")
     logLine("[ctrl] Starting controller: " .. cfg.get("node_id"), colors.lime)
 
     -- Open network
@@ -1430,7 +1430,7 @@ function controller.run(cfg)
         while true do
             local _, key = os.pullEvent("key")
             if runtime_ui and runtime_ui.handleKey(key) then
-            elseif key == keys.f2 then
+            elseif key == keys.c then
                 runtime_action = "config"
                 return
             elseif key == keys.f4 then

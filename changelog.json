@@ -229,6 +229,15 @@
       "notes": [
         "Make the full installer self-contained before managed files are downloaded"
       ]
+    },
+    {
+      "version": "0.3.9",
+      "manifest_revision": 7,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Remap runtime config hotkey from F2 to C to avoid Minecraft screenshot conflicts"
+      ]
     }
   ]
 }

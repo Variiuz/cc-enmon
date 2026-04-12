@@ -49,7 +49,7 @@ All nodes that should work together must share the same **channel**. Non-control
 
 All runtime terminals:
 
-- `F2` open the config editor for this node and relaunch afterward
+- `C` open the config editor for this node and relaunch afterward
 - `F3` toggle dedicated log view
 - `Up` / `Down` scroll log view
 - `PageUp` / `PageDown` scroll log view faster

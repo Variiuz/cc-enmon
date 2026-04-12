@@ -36,7 +36,7 @@ function display.run(cfg)
         })
     end
 
-    runtime_ui.setHint("F2 Config")
+    runtime_ui.setHint("C Config")
     logLine("[display] Starting display node: " .. cfg.get("node_id"), colors.lime)
     updatePanel("Booting", "Opening network", colors.black)
 
@@ -91,7 +91,7 @@ function display.run(cfg)
         while true do
             local _, key = os.pullEvent("key")
             if runtime_ui.handleKey(key) then
-            elseif key == keys.f2 then
+            elseif key == keys.c then
                 runtime_action = "config"
                 return
             end

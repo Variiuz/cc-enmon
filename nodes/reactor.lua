@@ -109,7 +109,7 @@ end
 function reactor.run(cfg)
     local claim_code = controller_link.newClaimCode()
     runtime_ui = runtime_panel.new("Reactor Node")
-    runtime_ui.setHint("F2 Config")
+    runtime_ui.setHint("C Config")
     logLine("[reactor] Starting reactor node: " .. cfg.get("node_id"), colors.lime)
     updatePanel(cfg, "Booting", "Opening network", colors.black)
 
@@ -197,7 +197,7 @@ function reactor.run(cfg)
         while true do
             local _, key = os.pullEvent("key")
             if runtime_ui.handleKey(key) then
-            elseif key == keys.f2 then
+            elseif key == keys.c then
                 runtime_action = "config"
                 return
             end
