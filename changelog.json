@@ -81,6 +81,15 @@
         "Hotfix missing lib/runtime_actions.lua in the release manifest",
         "Restored normal updater recovery for nodes that received the broken 0.3.5 payload"
       ]
+    },
+    {
+      "version": "0.3.7",
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Fixed controller update HUD crash caused by missing action_state initialization",
+        "Require controller review/update before normal remote node rollout and make F9 a review-then-apply local update flow"
+      ]
     }
   ]
 }

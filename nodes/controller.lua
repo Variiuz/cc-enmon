@@ -286,6 +286,36 @@ local function buildVersionPath(local_version, latest_version, needs_update)
     return current
 end
 
+local function controllerEntry(cfg)
+    return state.updates.nodes[cfg.get("node_id")]
+end
+
+local function controllerNeedsReviewUpdate(cfg)
+    local entry = controllerEntry(cfg)
+    if entry and entry.needs_update == true then
+        return true, entry
+    end
+    return false, entry
+end
+
+local function ensureControllerCurrentForRemoteUpdates(cfg)
+    if not state.updates.latest_version then
+        local ok = performUpdateCheck(cfg, false)
+        if not ok then
+            return false
+        end
+    end
+
+    local needsUpdate = controllerNeedsReviewUpdate(cfg)
+    if needsUpdate then
+        logLine("[ctrl] Controller update must be reviewed/applied before remote node updates", colors.orange)
+        refreshPanel(cfg)
+        return false
+    end
+
+    return true
+end
+
 local function selectRuntimeUpdateEntry(cfg)
     local rollout = state.updates.rollout
     if rollout and rollout.current then
@@ -345,7 +375,7 @@ local function buildUpdateSnapshot()
             status = status,
             needs_update = entry.needs_update == true,
             stale = isStale(entry.last_seen or 0),
-            note = entry.message or entry.node_status or (entry.role == "controller" and "Controller updates are local-only via enmon-cli update" or nil),
+            note = entry.message or entry.node_status or (entry.role == "controller" and "Review controller update here, then apply locally with F9 on the controller terminal" or nil),
         }
     end
 
@@ -698,7 +728,7 @@ local function createUpdateOffer(cfg, target_node_id)
         logLine("[ctrl] Controller updates are local-only via enmon-cli update", colors.orange)
         return false
     end
-    if not state.updates.latest_version and not performUpdateCheck(cfg, false) then
+    if not ensureControllerCurrentForRemoteUpdates(cfg) then
         return false
     end
 
@@ -747,6 +777,12 @@ local function startUpdateOffer(cfg)
     local offer = state.updates.offer
     if not offer then
         logLine("[ctrl] No pending update offer", colors.orange)
+        return false
+    end
+
+    if not ensureControllerCurrentForRemoteUpdates(cfg) then
+        state.updates.offer = nil
+        refreshPanel(cfg)
         return false
     end
 
@@ -899,7 +935,7 @@ local function startRollout(cfg)
         logLine("[ctrl] Update rollout already running", colors.orange)
         return
     end
-    if not state.updates.latest_version and not performUpdateCheck(cfg, false) then
+    if not ensureControllerCurrentForRemoteUpdates(cfg) then
         return
     end
 
@@ -1056,6 +1092,25 @@ end
 local function updateSelf(cfg)
     if state.updates.rollout then
         logLine("[ctrl] Finish remote rollout before self-update", colors.orange)
+        return
+    end
+
+    if not state.updates.latest_version then
+        local ok = performUpdateCheck(cfg, false)
+        if not ok then
+            return
+        end
+        local needsUpdate = controllerNeedsReviewUpdate(cfg)
+        if needsUpdate then
+            logLine("[ctrl] Review controller update in the Updates view, then press F9 again to apply", colors.lightBlue)
+            refreshPanel(cfg)
+            return
+        end
+    end
+
+    local needsUpdate = controllerNeedsReviewUpdate(cfg)
+    if not needsUpdate then
+        logLine("[ctrl] Controller already on latest version", colors.lime)
         return
     end
 

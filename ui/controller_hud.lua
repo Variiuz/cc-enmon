@@ -285,7 +285,7 @@ local function buildOverview(frame, w, h)
 end
 
 local function buildUpdates(frame, w, h)
-    local e = { row_buttons = {}, row_node_ids = {} }
+    local e = { row_buttons = {}, row_node_ids = {}, action_state = {} }
     e.frame = frame:addFrame():setPosition(1, HEADER_H + 1):setSize(w, h - HEADER_H):setBackground(COLORS.bg)
     local localFrame = e.frame
     local content_h = h - HEADER_H
