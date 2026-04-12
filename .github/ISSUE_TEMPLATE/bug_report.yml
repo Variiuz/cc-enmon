@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a runtime, setup, updater, or UI problem in ENMON.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Include enough detail to reproduce it in-game.
+  - type: input
+    id: release
+    attributes:
+      label: ENMON version
+      description: Release label such as 0.4.0 or 0.4.0+r1
+      placeholder: 0.4.0
+    validations:
+      required: true
+  - type: input
+    id: role
+    attributes:
+      label: Affected node role
+      description: Controller, matrix, reactor, display, or pocket
+      placeholder: controller
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include CC: Tweaked, modpack, and relevant mod versions
+      placeholder: CC: Tweaked x.y.z, Mekanism x.y.z, Extreme Reactors x.y.z
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: What did you do, and what happened next?
+      placeholder: |
+        1. Install controller on channel 42
+        2. Add reactor node
+        3. Adopt node from controller
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste relevant runtime logs, updater output, or screenshots if available

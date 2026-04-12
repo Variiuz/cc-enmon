@@ -1,101 +1,155 @@
-# ENMON — Energy Network Monitor
+# ENMON
 
-Modular ComputerCraft energy monitoring for **Mekanism Induction Matrix** and **Extreme Reactors**. (Mekanism Reactors support coming soon!)
+ENMON is a distributed energy monitoring and control stack for CC: Tweaked networks. It gives you one controller for your power room, shared telemetry across attached displays and pocket computers, and coordinated update rollouts for the machines that keep the system running.
 
-## Install (in-game)
+It currently supports Mekanism induction matrices for storage telemetry and Extreme Reactors / BigReactors for generation telemetry and basic reactor control.
 
-```
+## Why ENMON
+
+- Keep matrix storage, IO, and fill trends visible from one controller instead of checking each machine manually
+- Mirror the same controller-authored data to wall displays and pocket computers
+- Start and stop reactors automatically using configurable matrix thresholds
+- Track history without requiring every node to sample and store its own graphs
+- Roll out updates across the network without manually reinstalling each computer
+
+## Quick Start
+
+Run this on each ComputerCraft computer that should join the network:
+
+```lua
 wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua
 installer
 ```
 
-Run on each computer. Pick a role, follow the wizard.
+Recommended first setup:
 
-The bootstrap `installer.lua` now lets you choose a branch first, then downloads the full installer wizard from that branch. The installed node keeps using that branch for later updates through its local branch selection file rather than `manifest.json`.
+1. Install a controller first.
+2. Pick a shared wireless channel for the network.
+3. Add matrix, reactor, display, or pocket nodes on that same channel.
+4. Adopt new non-controller nodes from the controller using their claim codes.
+5. Verify that the controller monitor shows live node state before enabling auto control.
 
-If `enmon.cfg` already exists, the installer now detects it and lets you reuse that config as a starting point before reviewing each page again.
+The bootstrap installer lets you choose a branch first, then downloads the full setup wizard from that branch. Installed nodes keep using their chosen branch for future updates.
 
-Controller setup now only needs the node identity, channel, and controller-specific hardware/settings. New non-controller nodes on the same channel come up as `unlinked`, advertise a short claim code, and must be explicitly adopted from the controller before they start sending operational data.
+If `enmon.cfg` already exists, the installer can reuse it as a starting point and walk you back through the configuration pages.
 
-## Node Roles
+## Hardware By Role
 
-| Role | Hardware needed |
+| Role | What it does | Hardware |
+|---|---|---|
+| **Controller** | Central authority for telemetry, history, alerts, and updates | Advanced Computer + Monitor (3x2 recommended) + Ender Modem + optional Speaker |
+| **Matrix Node** | Reads Mekanism induction matrix state and publishes storage telemetry | Computer + Ender Modem + wired `mekanism:induction_port` |
+| **Reactor Node** | Reads reactor state and accepts bounded control commands | Computer + Ender Modem + Extreme Reactors / BigReactors Computer Port |
+| **Display Node** | Mirrors the controller-authored overview on another monitor | Computer + Monitor + Ender Modem |
+| **Pocket Computer** | Mobile readout with overview, history, and reactor detail tabs | Pocket Computer + Ender Modem |
+
+All nodes that belong to the same installation must share the same wireless channel.
+
+## How It Works
+
+ENMON uses a controller-first network model.
+
+```text
+Matrix Node ----\
+Reactor Node ---- Controller ---- Display Node
+Pocket Computer -/        \
+                           \--- Update coordination
+```
+
+- The controller collects telemetry, evaluates alerts, and stores the history series used by every view.
+- Matrix and reactor nodes stay focused on peripherals and transport.
+- Display and pocket nodes render controller-authored data instead of sampling their own local history.
+- New non-controller nodes start as `unlinked` and advertise a short claim code until the controller adopts them.
+- After adoption, operational traffic is authenticated with per-node tokens.
+
+## What You Can Do With It
+
+- Monitor induction matrix stored energy, capacity, input, output, and fill percentage
+- Watch shared history lines on the controller monitor, remote displays, and pocket tabs
+- See per-reactor output, temperature, rod level, and active state
+- Toggle reactors and adjust rod levels from the controller
+- Enable automatic reactor start/stop based on low and high matrix fill thresholds
+- Receive speaker alerts for low charge and missing nodes
+- Check, offer, and coordinate node updates from the controller
+
+## Controller Workflow
+
+The controller is the operational center of the system.
+
+Typical flow:
+
+1. Install the controller and complete its hardware bindings.
+2. Add remote nodes on the same channel.
+3. Adopt them from the controller once they appear as unlinked.
+4. Confirm matrix and reactor telemetry is live.
+5. Tune thresholds and history settings in the config editor.
+6. Turn on automatic reactor control if that fits your base.
+
+Key controller settings:
+
+- `auto_ctrl`: enables automatic reactor start and stop behavior
+- `threshold_low`: matrix fill percentage that starts reactors
+- `threshold_high`: matrix fill percentage that stops reactors
+- `history_persistence_mode`: `memory_only`, `prompt_when_disk_detected`, or `disk_enabled`
+- `energy_unit`: `FE` or `RF` label for FE-equivalent values
+- `update_check_interval`: seconds between controller manifest checks
+
+## Operating Views And Hotkeys
+
+### Runtime hotkeys on every node
+
+| Key | Action |
 |---|---|
-| **Controller** | Advanced Computer + Monitor (3×2) + Ender Modem + optional Speaker |
-| **Matrix Node** | Computer + Ender Modem + wired to `mekanism:induction_port` |
-| **Reactor Node** | Computer + Ender Modem + wired to Extreme Reactor CC port |
-| **Display Node** | Computer + Monitor + Ender Modem |
-| **Pocket Computer** | Pocket Computer + Ender Modem |
+| `C` | Open the config editor and relaunch this node afterward |
+| `F3` | Toggle the dedicated log view |
+| `Up` / `Down` | Scroll the log view |
+| `PageUp` / `PageDown` | Scroll the log view faster |
+| `Home` | Jump to the oldest visible log region |
+| `End` | Jump back to the live tail |
 
-All nodes that should work together must share the same **channel**. Non-controller nodes no longer need a manually entered shared secret or controller ID during setup.
+### Extra controller hotkeys
 
-## Features
+| Key | Action |
+|---|---|
+| `F4` | Switch the attached monitor between Overview and Updates |
+| `F5` | Check for updates |
+| `F6` | Offer updates to eligible remote nodes |
+| `F7` | Start the offered rollout |
+| `F8` | Abort the active offer or rollout |
+| `F9` | Self-update the controller |
 
-- Live induction matrix stored / max / input / output normalized to FE-equivalent values
-- Controller-authored history graphs on controller monitor, display node, and pocket tabs
-- In-memory rolling history with optional disk-backed persistence after operator approval
-- Per-reactor status, output rate, temperatures, rod level, and bounded control surfaces
-- Automatic reactor on/off based on configurable matrix fill thresholds
-- Speaker alerts for low energy / disconnected nodes
-- Explicit controller adoption flow for new nodes
-- Per-node token-authenticated operational messages after adoption
-- Responsive UI (adapts to monitor size)
+## History And Energy Units
 
-## Hotkeys
+History is memory-first by design. If a disk is detected and the controller is set to `prompt_when_disk_detected`, ENMON asks once before enabling disk-backed persistence.
 
-### Terminal Hotkeys
+Matrix readings are normalized to FE-equivalent values before display. This keeps matrix telemetry aligned with the rest of a typical CC: Tweaked power room even when Mekanism reports internal Joule values differently.
 
-All runtime terminals:
+The display label is configurable:
 
-- `C` open the config editor for this node and relaunch afterward
-- `F3` toggle dedicated log view
-- `Up` / `Down` scroll log view
-- `PageUp` / `PageDown` scroll log view faster
-- `Home` jump to oldest visible log region
-- `End` jump back to live tail
+- `FE` is the default and matches Mekanism's common UI wording
+- `RF` keeps the same FE-equivalent numbers and only changes the label
 
-Controller terminal only:
+## Updates And Rollouts
 
-- `F4` toggle attached monitor between Overview and Updates
-- `F5` check for updates
-- `F6` offer updates to eligible remote nodes
-- `F7` start the offered rollout
-- `F8` abort the active offer/rollout
-- `F9` self-update the controller
+Use the dedicated CLI entrypoint for local update operations:
 
-## 0.4.0 Runtime Notes
+- `enmon-cli update` checks the remote manifest and downloads only changed managed files
+- `enmon-cli update force` re-downloads and reapplies managed files even if the semantic version is unchanged
+- `enmon-cli reinstall` is an explicit alias of `update force`
+- `enmon-cli verify` compares local managed files against manifest hashes and reports missing, changed, or stale files
 
-- Controller, display, and pocket all render the same controller-authored history series rather than sampling locally.
-- Pocket now uses tabbed views for Overview, History, and Reactor detail.
-- History persistence is memory-first. If a disk is detected and the controller is set to `prompt_when_disk_detected`, ENMON asks once before enabling disk-backed history.
-- The controller config editor now exposes `History persistence` and `Energy unit label` settings.
-- Matrix values are normalized to FE-equivalent numbers before display. The display unit label defaults to `FE` and can be changed to `RF` in the controller config editor.
+`enmon.lua` still forwards CLI arguments to `enmon-cli.lua` for compatibility, but `enmon-cli` is the preferred interface.
 
-## Update Commands
+The manifest also defines a rollout policy:
 
-- `enmon-cli update` checks the remote manifest and only downloads files whose manifest hash differs locally.
-- `enmon-cli update force` re-downloads and reapplies files even when the version number did not change.
-- `enmon-cli reinstall` is the explicit local alias of `update force`.
-- `enmon-cli verify` compares local files against the remote manifest hashes and reports missing, changed, or stale managed files.
-- `enmon-cli update` and `reinstall` prompt before applying changes; pass `--yes` to skip confirmation.
-- `tools/update-recovery-harness.lua` exercises interrupted update recovery and stale managed-file cleanup inside a temporary test workspace.
+- `controller-first`: the controller should be reviewed or updated before normal remote rollout
+- `node-safe`: remote rollout can proceed without updating the controller first
 
-Normal updates trigger on a newer release label. A same-version hotfix is published by incrementing `manifest_revision`, which produces labels such as `0.3.8+r1`.
+The current default policy is `controller-first`.
 
-`enmon.lua` still forwards CLI arguments to `enmon-cli.lua` for compatibility, but the dedicated CLI entrypoint is now the preferred command.
+## Release Workflow
 
-## Rollout Policy
-
-The manifest now includes an explicit `rollout_policy` field.
-
-- `controller-first` means the controller must be reviewed/updated before normal remote node rollout is allowed.
-- `node-safe` means remote node rollout can proceed without updating the controller first.
-
-Current default: `controller-first`.
-
-## Release Helper
-
-Use the PowerShell helper to bump the release version and append a `changelog.json` entry:
+Use the PowerShell helper to create releases and same-version hotfixes:
 
 ```powershell
 ./tools/bump-version.ps1
@@ -104,7 +158,7 @@ Use the PowerShell helper to bump the release version and append a `changelog.js
 ./tools/bump-version.ps1 -Hotfix -Notes "Same-version hotfix with new manifest revision"
 ```
 
-It updates:
+The release helper updates:
 
 - `manifest.json`
 - `installer.lua`
@@ -112,22 +166,48 @@ It updates:
 - `lib/version.lua`
 - `changelog.json`
 
-Release rule: do not edit manifest hashes by hand. Use `./tools/bump-version.ps1` for both semantic releases and same-version hotfix revisions so manifest hashes are generated consistently from the script.
+Important release rule: do not edit manifest hashes by hand. Use `./tools/bump-version.ps1` so managed file hashes and release metadata stay in sync.
 
-Exception: a manual follow-up is acceptable for a narrow EOF/EOL normalization fix when a release file needs line-ending cleanup after the script runs. In that case, rerun the bump flow or otherwise bring the script-generated metadata back into sync instead of maintaining hand-edited hashes as the steady-state process.
+## Project Status
 
-## Energy Units
+Current release line: `0.4.0`
 
-Mekanism induction matrix readings are normalized to FE-equivalent values before ENMON displays them. This avoids the common Joules-vs-FE mismatch where matrix input/output appears roughly `2.5x` higher than the reactor output feeding it.
+Recent changes in this line include:
 
-The controller config editor exposes an `Energy unit label` field:
+- Shared controller-authored history across controller, display, and pocket nodes
+- Pocket tab views for overview, history, and reactor detail
+- Configurable history persistence mode and energy-unit label
+- Hash-based updater verification and same-version hotfix support
 
-- `FE` is the default and matches the in-game Mekanism display.
-- `RF` keeps the same FE-equivalent numbers but changes the label for packs or players that still prefer RF wording.
+## Screenshots And Demo
+
+Planned documentation captures:
+
+- The controller overview monitor
+- The updates view during a rollout
+- The pocket overview and history tabs
+- The setup wizard or adoption flow
+
+The UI is already present in the codebase; the repository does not include captured examples yet.
+
+## Development Notes
+
+- There is no large automated test suite yet
+- `tools/update-recovery-harness.lua` is available for updater and stale-file recovery checks
+- Runtime behavior is easiest to validate in-game with a controller plus at least one matrix or reactor node
+
+## Contributing
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) for issue guidance, release rules, and workflow expectations.
 
 ## Requirements
 
 - CC: Tweaked
-- Mekanism v10+ (Induction Matrix)
-- Extreme Reactors / BigReactors (optional)
-- HTTP enabled + `raw.githubusercontent.com` allowed in server config
+- Mekanism v10+ for induction matrix telemetry
+- Extreme Reactors or BigReactors for reactor telemetry and control
+- HTTP enabled, with access to `raw.githubusercontent.com`
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
+

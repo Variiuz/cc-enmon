@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ENMON contributing guide
+    url: https://github.com/Variiuz/cc-enmon/blob/master/CONTRIBUTING.md
+    about: Read the contribution and reporting guidance before opening larger requests.
