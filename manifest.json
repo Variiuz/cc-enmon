@@ -39,7 +39,7 @@
       "ui/pocket_hud.lua"
     ]
   },
-  "manifest_revision": 7,
+  "manifest_revision": 8,
   "hashes": {
     "installer.lua": "5c5709f74f04878bb64c28107461407af9297ccf86b01937b458618f6904ce2d",
     "lib/basalt.lua": "1885c88b48ff55a12d6648a44d89c2418bf920f15f62713c74217a368c00d887",
@@ -48,9 +48,9 @@
     "lib/config.lua": "b81405e41b827313f188736b8a5ad419e13abc1c6859ed32448d823cd99fb4a6",
     "lib/runtime_actions.lua": "4170b9b1af031790c64c9f5f024467c2d008daaddbea9305f2955ccc95a24f18",
     "lib/util.lua": "5b1ebd0bcdf81e8eb82e1eb20fd76a14eb4406e125d7a4ca038df85bba834c67",
-    "lib/version.lua": "67c099bf03e49ba7c56d340b48ef685d798dfc1d9bf6b4d0e47af1edc4355cdb",
+    "lib/version.lua": "2249e3b00e2e176ef2a186a589dc958f8cd8e62a6684f8ba24eb349f771d87e8",
     "lib/hmac.lua": "ed1a411e072074c8f0c66fcb21d4b28108dc4a3bf415f9c644367d5b283dc974",
-    "lib/network.lua": "fc60f0d3830bcca1501030c0803eced3898a18ba13308cad5bed1389dbfe8656",
+    "lib/network.lua": "a598c6298ee7fff2dac8bf634827c95e47e2d8b33d41586a2dba8b80e4342714",
     "lib/controller_link.lua": "ac18ed394e1f6e82dc5febf6b021a94a01c7b0d2a1ef427b3748f658db57a6d3",
     "lib/node_identity.lua": "ecfb5804d568e3d3f5c813e5665eaceeb6e8482d0c53039b5a07b6c49103fa83",
     "lib/updater.lua": "8e8a51b74b409c3c5e5ea5085bc8bbf33a6edc5cf17b5687c4d6d8cbfca70e13",

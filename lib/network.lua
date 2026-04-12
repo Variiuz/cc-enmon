@@ -80,7 +80,7 @@ end
 
 function net.close()
     if _modem then
-        pcall(_modem.close, _modem, _channel)
+        pcall(_modem.close, _channel)
         _modem = nil
     end
 end
@@ -180,7 +180,7 @@ function net.send(msg_type, payload, target_channel, options)
 
     local msg = textutils.serialize(message)
     local ch = target_channel or _channel
-    local ok, err = pcall(_modem.transmit, _modem, ch, ch, msg)
+    local ok, err = pcall(_modem.transmit, ch, ch, msg)
     return ok, err, msg_id
 end
 

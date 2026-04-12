@@ -238,6 +238,15 @@
       "notes": [
         "Remap runtime config hotkey from F2 to C to avoid Minecraft screenshot conflicts"
       ]
+    },
+    {
+      "version": "0.3.9",
+      "manifest_revision": 8,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Fix wrapped modem transmit calls so node discovery and telemetry actually send"
+      ]
     }
   ]
 }
