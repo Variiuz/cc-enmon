@@ -18,7 +18,48 @@ if _dir == "" then _dir = "/" end
 package.path = _dir .. "/?.lua;" .. _dir .. "/?/init.lua;" .. package.path
 
 local args = {...}
-local pmgr = require("lib/peripheral_mgr")
+
+local function wrapPeripheral(name)
+    if not peripheral.isPresent(name) then return nil end
+    local ok, p = pcall(peripheral.wrap, name)
+    if ok and p then return p end
+    return nil
+end
+
+local function isWirelessModem(peripheralRef)
+    if not peripheralRef or type(peripheralRef.isWireless) ~= "function" then
+        return nil
+    end
+
+    local ok, result = pcall(peripheralRef.isWireless, peripheralRef)
+    if ok then return result == true end
+
+    ok, result = pcall(peripheralRef.isWireless)
+    if ok then return result == true end
+    return nil
+end
+
+local function listModems()
+    local found = {}
+    for _, name in ipairs(peripheral.getNames()) do
+        local ptype = peripheral.getType(name)
+        if ptype == "ender_modem" or ptype == "modem" then
+            found[#found + 1] = name
+        end
+    end
+    return found
+end
+
+local function listWirelessModems()
+    local found = {}
+    for _, name in ipairs(listModems()) do
+        local peripheralRef = wrapPeripheral(name)
+        if isWirelessModem(peripheralRef) == true then
+            found[#found + 1] = name
+        end
+    end
+    return found
+end
 
 local function composeReleaseLabel(baseVersion, manifestRevision)
     local revision = tonumber(manifestRevision) or 0
@@ -28,7 +69,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.3.9", 5)
+local VERSION    = composeReleaseLabel("0.3.9", 6)
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
@@ -599,12 +640,12 @@ local function listPeripheralsOfType(ptype)
 end
 
 local function describeModem(name)
-    local peripheralRef = pmgr.wrap(name)
+    local peripheralRef = wrapPeripheral(name)
     if not peripheralRef then
         return tostring(name) .. " (missing)"
     end
 
-    local wireless = pmgr.isWireless(peripheralRef)
+    local wireless = isWirelessModem(peripheralRef)
     if wireless == true then
         return tostring(name) .. " (ender modem)"
     elseif wireless == false then
@@ -616,13 +657,13 @@ end
 
 local function resolveAutoModemSide(cfg)
     if type(cfg.modem_side) == "string" and cfg.modem_side ~= "" then
-        local peripheralRef = pmgr.wrap(cfg.modem_side)
-        if peripheralRef and pmgr.isWireless(peripheralRef) == true then
+        local peripheralRef = wrapPeripheral(cfg.modem_side)
+        if peripheralRef and isWirelessModem(peripheralRef) == true then
             return cfg.modem_side, "saved"
         end
     end
 
-    local wireless = pmgr.listWirelessModems()
+    local wireless = listWirelessModems()
     if #wireless == 1 then
         return wireless[1], "detected"
     end
@@ -798,8 +839,8 @@ local function pageModem(cfg)
     while true do
         local win = drawChrome("Modem Selection")
         local row = 1
-        local modems = pmgr.listModems()
-        local wireless = pmgr.listWirelessModems()
+        local modems = listModems()
+        local wireless = listWirelessModems()
         local defaultModem = cfg.modem_side or wireless[1] or modems[1] or ""
 
         row = writeParagraph(win, row, "Choose the ender modem ENMON should use for network traffic. This screen only appears when ENMON cannot confidently auto-select the only wireless-class modem.", STYLE.root_fg)
@@ -1357,6 +1398,8 @@ cls()
 if rebootNow then
     os.reboot()
 end
+
+
 
 
 
