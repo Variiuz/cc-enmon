@@ -7,7 +7,7 @@ local updater = {}
 
 local STAGE_DIR = ".enmon_update_stage"
 local SENTINEL_PATH = ".enmon_update_state"
-local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/refs/heads/main/release/basalt-core.lua"
+local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
 
 local function log(logger, message)
     if type(logger) == "function" then
@@ -46,6 +46,11 @@ local function readHttp(url)
     local raw = handle.readAll()
     handle.close()
     return raw
+end
+
+local function cacheBust(url, token)
+    local sep = url:find("?", 1, true) and "&" or "?"
+    return url .. sep .. "_enmon=" .. tostring(token)
 end
 
 local function clearPath(path)
@@ -87,7 +92,7 @@ end
 
 function updater.fetchRemoteManifest(base_url)
     local root = base_url or version.getBaseUrl()
-    local raw, err = readHttp(root .. "manifest.json")
+    local raw, err = readHttp(cacheBust(root .. "manifest.json", tostring(os.epoch and os.epoch("utc") or os.clock())))
     if not raw then return nil, err end
 
     local manifest = version.parseManifest(raw)
@@ -112,17 +117,18 @@ function updater.collectFiles(manifest, role)
     end
 
     local base = manifest.base_url or version.getBaseUrl()
+    local token = manifest.version or version.getVersion()
     local files = {
-        { path = "manifest.json", url = base .. "manifest.json" },
-        { path = "installer.lua", url = base .. "installer.lua" },
-        { path = "lib/basalt.lua", url = BASALT_URL },
+        { path = "manifest.json", url = cacheBust(base .. "manifest.json", token) },
+        { path = "installer.lua", url = cacheBust(base .. "installer.lua", token) },
+        { path = "lib/basalt.lua", url = cacheBust(BASALT_URL, token) },
     }
 
     for _, relPath in ipairs(manifest.files.common or {}) do
-        files[#files + 1] = { path = relPath, url = base .. relPath }
+        files[#files + 1] = { path = relPath, url = cacheBust(base .. relPath, token) }
     end
     for _, relPath in ipairs(roleFiles) do
-        files[#files + 1] = { path = relPath, url = base .. relPath }
+        files[#files + 1] = { path = relPath, url = cacheBust(base .. relPath, token) }
     end
 
     return uniquePaths(files)

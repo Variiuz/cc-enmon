@@ -11,7 +11,7 @@
 --   7. Open config review UI
 --
 -- In-game install command:
---   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/installer.lua installer.lua
+--   wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua
 --   installer
 
 local function readManifestValue(key, fallback)
@@ -24,10 +24,10 @@ local function readManifestValue(key, fallback)
     return raw:match(pattern) or fallback
 end
 
-local VERSION    = readManifestValue("version", "0.3.1")
-local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/refs/heads/master/")
+local VERSION    = readManifestValue("version", "0.3.2")
+local BASE_URL   = readManifestValue("base_url", "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/")
 local MANIFEST   = BASE_URL .. "manifest.json"
-local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/refs/heads/main/release/basalt-core.lua"
+local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
 
 local ROLE_LABELS = {
     controller = "Controller  (monitor + modem + optional speaker)",
@@ -820,9 +820,14 @@ local function ensureDir(path)
     if path ~= "" and not fs.isDir(path) then fs.makeDir(path) end
 end
 
-local function download(url, dest)
+local function cacheBust(url, token)
+    local sep = url:find("?", 1, true) and "&" or "?"
+    return url .. sep .. "_enmon=" .. tostring(token)
+end
+
+local function download(url, dest, token)
     local ok, err = pcall(function()
-        local response, herr = http.get(url)
+        local response, herr = http.get(cacheBust(url, token or VERSION))
         if not response then error(tostring(herr) or "request failed") end
         local code = response.getResponseCode and response.getResponseCode() or 200
         local data = response.readAll()
@@ -837,7 +842,7 @@ local function download(url, dest)
 end
 
 local function fetchManifest()
-    local response, herr = http.get(MANIFEST)
+    local response, herr = http.get(cacheBust(MANIFEST, tostring(os.epoch and os.epoch("utc") or os.clock())))
     if not response then
         return nil, "HTTP failed: " .. tostring(herr) .. "\nURL: " .. MANIFEST
     end
@@ -1010,7 +1015,7 @@ for _, path in ipairs(manifest.files[cfg.role] or {}) do files[#files + 1] = pat
 
 local failed = {}
 for _, path in ipairs(files) do
-    local ok, err = download(manifest.base_url .. path, path)
+    local ok, err = download(manifest.base_url .. path, path, manifest.version or VERSION)
     if ok then
         log("[OK]  " .. path, STYLE.ok_fg)
     else
@@ -1019,7 +1024,7 @@ for _, path in ipairs(files) do
     end
 end
 
-local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua")
+local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua", manifest.version or VERSION)
 if basaltOk then
     log("[OK]  lib/basalt.lua", STYLE.ok_fg)
 else

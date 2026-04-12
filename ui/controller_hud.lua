@@ -267,7 +267,7 @@ local function buildOverview(frame, w, h)
 end
 
 local function buildUpdates(frame, w, h)
-    local e = { row_buttons = {} }
+    local e = { row_buttons = {}, row_node_ids = {} }
     e.frame = frame:addFrame():setPosition(1, 3):setSize(w, h - 2):setBackground(COLORS.bg)
     local localFrame = e.frame
     local content_h = h - 2
@@ -308,7 +308,7 @@ local function buildUpdates(frame, w, h)
             :setBackground(COLORS.list_bg):setForeground(COLORS.label)
             :setText("")
             :onClick(function(self)
-                local node_id = _updates.row_node_ids[index]
+                local node_id = e.row_node_ids and e.row_node_ids[index] or nil
                 setSelection(node_id)
             end)
     end
