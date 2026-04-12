@@ -1,4 +1,4 @@
--- nodes/pocket.lua
+-- nodes/pocket/init.lua
 -- Pocket Computer monitoring node.
 -- Sends POCKET_REQUEST to the Controller every 2 seconds and renders
 -- the compact read-only HUD via ui/pocket_hud.lua.
@@ -8,6 +8,7 @@
 local net  = require("lib/network")
 local controller_link = require("lib/controller_link")
 local identity = require("lib/node_identity")
+local pocket_link = require("lib/pocket_link")
 local pmgr = require("lib/peripheral_mgr")
 local hud  = require("ui/pocket_hud")
 local update_service = require("lib/update_service")
@@ -33,7 +34,7 @@ function pocket.run(cfg)
     local function request_loop()
         local next_hello = os.clock() + 10
         while true do
-            local payload = identity.decorateTelemetry(cfg, "pocket", { from = my_id })
+            local payload = pocket_link.buildRequestPayload(cfg, my_id)
             if payload then
                 controller_link.sendNodeMessage(cfg, net.MSG.POCKET_REQUEST, payload)
             end
@@ -53,7 +54,7 @@ function pocket.run(cfg)
                     identity.announce(cfg, "pocket", "adopted")
                 end) then
                 elseif msg.type == net.MSG.POCKET_DATA then
-                    if msg.payload.for_sender == nil or msg.payload.for_sender == my_id then
+                    if pocket_link.acceptPayload(msg.payload, my_id) then
                         if controller_link.validateControllerMessage(cfg, msg, print) then
                             hud.update(msg.payload)
                         end

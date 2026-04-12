@@ -256,6 +256,31 @@
       "notes": [
         "Use deterministic v2 auth tags so adopted node telemetry and update checks survive restarts"
       ]
+    },
+    {
+      "version": "0.3.10",
+      "manifest_revision": 0,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add controller-authored history graphs for controller monitor, display node, and pocket tabs",
+        "Expand reactor telemetry and controls with temperatures, rod state, and richer pocket/detail views",
+        "Refactor shared graph/runtime/persistence/controller-view helpers into common modules and switch history persistence to memory-first with disk opt-in",
+        "Restore in-game time displays and normalize induction matrix values to FE-equivalent numbers with configurable FE/RF labels"
+      ]
+    },
+    {
+      "version": "0.4.0",
+      "manifest_revision": 0,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Add controller-authored history graphs for controller monitor, display node, and pocket tabs",
+        "Expand reactor telemetry and controls with temperatures, rod state, and richer pocket/detail views",
+        "Normalize induction matrix values to FE-equivalent numbers and add configurable FE/RF display labels",
+        "Switch history persistence to memory-first with disk opt-in and restore in-game time displays",
+        "Refactor shared graph/runtime/persistence helpers and split role logic into nodes/<role>/ subfolders"
+      ]
     }
   ]
 }

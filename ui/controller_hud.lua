@@ -3,6 +3,7 @@
 -- Provides both the runtime overview and a dedicated update/operator pane.
 
 local util = require("lib/util")
+local graph = require("lib/graph")
 local basalt = require("lib/basalt")
 
 local hud = {}
@@ -171,6 +172,8 @@ local function ensureReactorEntry(nid, row)
     if entry then
         entry.label:setPosition(_overview.rx_x, row)
         entry.btn:setPosition(_overview.rx_x, row + 1)
+        entry.rod_down:setPosition(_overview.rx_x + 7, row + 1)
+        entry.rod_up:setPosition(_overview.rx_x + 12, row + 1)
         return entry
     end
 
@@ -188,6 +191,24 @@ local function ensureReactorEntry(nid, row)
                 local reactor = _data.reactors and _data.reactors[nid]
                 local want = not (reactor and reactor.active)
                 _ctrl.setReactorActive(nid, want)
+            end
+        end)
+
+    entry.rod_down = _overview.frame:addButton()
+        :setPosition(_overview.rx_x + 7, row + 1):setSize(4, 1)
+        :setText("R- "):setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
+        :onClick(function()
+            if _ctrl then
+                _ctrl.adjustReactorControlRod(nid, -5)
+            end
+        end)
+
+    entry.rod_up = _overview.frame:addButton()
+        :setPosition(_overview.rx_x + 12, row + 1):setSize(4, 1)
+        :setText("R+ "):setBackground(COLORS.action_bg):setForeground(COLORS.btn_fg)
+        :onClick(function()
+            if _ctrl then
+                _ctrl.adjustReactorControlRod(nid, 5)
             end
         end)
 
@@ -244,6 +265,17 @@ local function buildOverview(frame, w, h)
             :setPosition(2, py + 7):setSize(lw, 1):setBackground(COLORS.bg)
             :setForeground(COLORS.value):setText("0.0%")
 
+        e.hist_fill = localFrame:addLabel()
+            :setPosition(2, py + 8):setSize(lw, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.muted):setText("Fill __________ --")
+
+        e.hist_output = localFrame:addLabel()
+            :setPosition(2, py + 9):setSize(lw, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.muted):setText("Out  __________ --")
+
+        e.hist_graph_w = math.max(8, lw - 14)
+        e.hist_text_w = lw
+
         e.rx_title = localFrame:addLabel()
             :setPosition(rx, py):setSize(w - rx, 1):setBackground(COLORS.bg)
             :setForeground(colors.yellow):setText("[ Reactors ]")
@@ -272,8 +304,15 @@ local function buildOverview(frame, w, h)
             :setPosition(1, py + 3):setSize(w, 1):setBackground(COLORS.bg)
             :setForeground(COLORS.value):setText("0.0%")
 
+        e.hist_fill = localFrame:addLabel()
+            :setPosition(1, py + 4):setSize(w, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.muted):setText("Fill ______ --")
+
+        e.hist_graph_w = math.max(6, w - 14)
+        e.hist_text_w = w
+
         e.rx_title = localFrame:addLabel()
-            :setPosition(1, py + 5):setSize(w, 1):setBackground(COLORS.bg)
+            :setPosition(1, py + 6):setSize(w, 1):setBackground(COLORS.bg)
             :setForeground(colors.yellow):setText("[Reactors]")
 
         e.rx_x = 1
@@ -386,14 +425,15 @@ end
 local function renderOverview(data)
     local e = _overview
     if not e.frame then return end
+    local energy_unit = data.energy_unit or "FE"
 
     local matrix = data.matrix
     if matrix and not data.matrix_stale then
         local fill = util.fillFraction(matrix.energy, matrix.max_energy)
-        e.mat_stored_val:setText(util.formatEnergy(matrix.energy))
-        if e.mat_max_val then e.mat_max_val:setText(util.formatEnergy(matrix.max_energy)) end
-        if e.mat_in_val then e.mat_in_val:setText("+" .. util.formatRate(matrix.last_input)) end
-        if e.mat_out_val then e.mat_out_val:setText("-" .. util.formatRate(matrix.last_output)) end
+        e.mat_stored_val:setText(util.formatEnergy(matrix.energy, energy_unit))
+        if e.mat_max_val then e.mat_max_val:setText(util.formatEnergy(matrix.max_energy, energy_unit)) end
+        if e.mat_in_val then e.mat_in_val:setText("+" .. util.formatRate(matrix.last_input, energy_unit)) end
+        if e.mat_out_val then e.mat_out_val:setText("-" .. util.formatRate(matrix.last_output, energy_unit)) end
         e.mat_bar:setProgress(fill * 100)
         e.mat_bar:setForeground(barColor(fill))
         e.mat_pct:setText(util.formatPercent(fill))
@@ -406,7 +446,27 @@ local function renderOverview(data)
         e.mat_pct:setText("--")
     end
 
-    local row = e.wide and 2 or 8
+    local samples = data.history or {}
+    if e.hist_fill then
+        local fill_line, fill_latest = renderHistoryLine(
+            samples,
+            e.hist_graph_w or 10,
+            function(sample)
+                return (tonumber(sample.matrix_fill) or 0) * 100
+            end,
+            function(value)
+                return util.formatPercent((tonumber(value) or 0) / 100)
+            end,
+            "--"
+        )
+        e.hist_fill:setText(truncate("Fill " .. fill_line .. " " .. fill_latest, e.hist_text_w or 20))
+    end
+    if e.hist_output then
+        local output_line, output_latest = graph.renderReactorOutputLine(samples, e.hist_graph_w or 10, energy_unit)
+        e.hist_output:setText(truncate("Out  " .. output_line .. " " .. output_latest, e.hist_text_w or 20))
+    end
+
+    local row = e.wide and 2 or 9
     for nid, reactor in pairs(data.reactors or {}) do
         local entry = ensureReactorEntry(nid, row)
         local stale = (os.clock() - (reactor.updated or 0)) > 10
@@ -415,14 +475,24 @@ local function renderOverview(data)
             entry.label:setForeground(COLORS.alert_fg)
         else
             local status = reactor.active and "ONLINE" or "OFFLINE"
-            local rate = util.formatRate(reactor.produced_last_t or 0)
-            entry.label:setText(nid .. ": " .. status .. "  " .. rate)
+            local rate = util.formatRate(reactor.produced_last_t or 0, energy_unit)
+            entry.label:setText(truncate(
+                nid .. ": " .. status .. "  " .. rate .. "  " .. graph.reactorLevelText(tonumber(reactor.control_rod_level)) .. "  " .. graph.reactorTempText(tonumber(reactor.fuel_temp)),
+                e.rx_w
+            ))
             entry.label:setForeground(reactorStatusColor(reactor.active))
         end
         if reactor.active then
             entry.btn:setText(" OFF "):setBackground(COLORS.btn_on)
         else
             entry.btn:setText(" ON  "):setBackground(COLORS.btn_off)
+        end
+        if reactor.control_rod_level ~= nil then
+            entry.rod_down:setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
+            entry.rod_up:setBackground(COLORS.action_bg):setForeground(COLORS.btn_fg)
+        else
+            entry.rod_down:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
+            entry.rod_up:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
         end
         row = row + 3
     end

@@ -31,17 +31,15 @@ All nodes that should work together must share the same **channel**. Non-control
 
 ## Features
 
-- Live energy stored / max / input / output from Induction Matrix
-- Per-reactor status, output rate, and on/off control
+- Live induction matrix stored / max / input / output normalized to FE-equivalent values
+- Controller-authored history graphs on controller monitor, display node, and pocket tabs
+- In-memory rolling history with optional disk-backed persistence after operator approval
+- Per-reactor status, output rate, temperatures, rod level, and bounded control surfaces
 - Automatic reactor on/off based on configurable matrix fill thresholds
 - Speaker alerts for low energy / disconnected nodes
 - Explicit controller adoption flow for new nodes
 - Per-node token-authenticated operational messages after adoption
 - Responsive UI (adapts to monitor size)
-- Peripheral check during setup wizard
-- Automatic config schema migration for older `enmon.cfg` files on load/save
-- Hash-based delta updates using manifest SHA-256 file hashes
-- Automatic controller-issued node tokens after first pairing
 
 ## Hotkeys
 
@@ -64,6 +62,14 @@ Controller terminal only:
 - `F7` start the offered rollout
 - `F8` abort the active offer/rollout
 - `F9` self-update the controller
+
+## 0.4.0 Runtime Notes
+
+- Controller, display, and pocket all render the same controller-authored history series rather than sampling locally.
+- Pocket now uses tabbed views for Overview, History, and Reactor detail.
+- History persistence is memory-first. If a disk is detected and the controller is set to `prompt_when_disk_detected`, ENMON asks once before enabling disk-backed history.
+- The controller config editor now exposes `History persistence` and `Energy unit label` settings.
+- Matrix values are normalized to FE-equivalent numbers before display. The display unit label defaults to `FE` and can be changed to `RF` in the controller config editor.
 
 ## Update Commands
 
@@ -105,6 +111,15 @@ It updates:
 - `installer-full.lua`
 - `lib/version.lua`
 - `changelog.json`
+
+## Energy Units
+
+Mekanism induction matrix readings are normalized to FE-equivalent values before ENMON displays them. This avoids the common Joules-vs-FE mismatch where matrix input/output appears roughly `2.5x` higher than the reactor output feeding it.
+
+The controller config editor exposes an `Energy unit label` field:
+
+- `FE` is the default and matches the in-game Mekanism display.
+- `RF` keeps the same FE-equivalent numbers but changes the label for packs or players that still prefer RF wording.
 
 ## Requirements
 

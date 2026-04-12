@@ -3,6 +3,7 @@
 -- Identical layout to controller_hud but no interactive controls (no buttons).
 
 local util   = require("lib/util")
+local graph  = require("lib/graph")
 local basalt = require("lib/basalt")
 
 local hud = {}
@@ -21,6 +22,14 @@ local COLORS = {
 
 local _frame    = nil
 local _elements = {}
+
+local function truncate(text, width)
+    text = tostring(text or "")
+    if width <= 0 then return "" end
+    if #text <= width then return text end
+    if width <= 3 then return text:sub(1, width) end
+    return text:sub(1, width - 3) .. "..."
+end
 
 local function barColor(fill)
     if fill >= 0.75 then return colors.green
@@ -81,6 +90,15 @@ local function buildWide(frame, w, h)
         :setPosition(2, py+7):setSize(lw, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.value):setText("0.0%")
 
+    e.hist_fill = frame:addLabel()
+        :setPosition(2, py+8):setSize(lw, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.muted or colors.lightGray):setText("Fill __________ --")
+    e.hist_output = frame:addLabel()
+        :setPosition(2, py+9):setSize(lw, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.muted or colors.lightGray):setText("Out  __________ --")
+    e.hist_graph_w = math.max(8, lw - 14)
+    e.hist_text_w = lw
+
     local rx = math.floor(w / 2) + 2
     e.rx_title = frame:addLabel()
         :setPosition(rx, py):setSize(w - rx, 1):setBackground(COLORS.bg)
@@ -119,6 +137,11 @@ local function buildNarrow(frame, w, h)
     e.mat_pct = frame:addLabel()
         :setPosition(1, py+3):setSize(w, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.value):setText("0.0%")
+    e.hist_fill = frame:addLabel()
+        :setPosition(1, py+4):setSize(w, 1):setBackground(COLORS.bg)
+        :setForeground(colors.lightGray):setText("Fill ______ --")
+    e.hist_graph_w = math.max(6, w - 14)
+    e.hist_text_w = w
     frame:addLabel():setPosition(1, py+5):setSize(w, 1):setBackground(COLORS.bg)
         :setForeground(colors.yellow):setText("[Reactors]")
     e.rx_entries = {}
@@ -160,6 +183,7 @@ end
 function hud.update(data)
     if not _frame then return end
     local e = _elements
+    local energy_unit = data.energy_unit or "FE"
 
     e.clock:setText(data.timestamp or "--:--:--")
 
@@ -174,10 +198,10 @@ function hud.update(data)
     local m = data.matrix
     if m and not data.matrix_stale then
         local fill = util.fillFraction(m.energy, m.max_energy)
-        e.mat_stored_val:setText(util.formatEnergy(m.energy))
-        if e.mat_max_val  then e.mat_max_val:setText(util.formatEnergy(m.max_energy)) end
-        if e.mat_in_val   then e.mat_in_val:setText("+" .. util.formatRate(m.last_input)) end
-        if e.mat_out_val  then e.mat_out_val:setText("-" .. util.formatRate(m.last_output)) end
+        e.mat_stored_val:setText(util.formatEnergy(m.energy, energy_unit))
+        if e.mat_max_val  then e.mat_max_val:setText(util.formatEnergy(m.max_energy, energy_unit)) end
+        if e.mat_in_val   then e.mat_in_val:setText("+" .. util.formatRate(m.last_input, energy_unit)) end
+        if e.mat_out_val  then e.mat_out_val:setText("-" .. util.formatRate(m.last_output, energy_unit)) end
         e.mat_bar:setProgress(fill * 100):setForeground(barColor(fill))
         e.mat_pct:setText(util.formatPercent(fill))
     else
@@ -186,14 +210,37 @@ function hud.update(data)
         e.mat_pct:setText("--")
     end
 
+    local samples = data.history or {}
+    if e.hist_fill then
+        local fill_line, fill_latest = renderHistoryLine(
+            samples,
+            e.hist_graph_w or 10,
+            function(sample)
+                return (tonumber(sample.matrix_fill) or 0) * 100
+            end,
+            function(value)
+                return util.formatPercent((tonumber(value) or 0) / 100)
+            end,
+            "--"
+        )
+        e.hist_fill:setText(truncate("Fill " .. fill_line .. " " .. fill_latest, e.hist_text_w or 20))
+    end
+    if e.hist_output then
+        local output_line, output_latest = graph.renderReactorOutputLine(samples, e.hist_graph_w or 10, energy_unit)
+        e.hist_output:setText(truncate("Out  " .. output_line .. " " .. output_latest, e.hist_text_w or 20))
+    end
+
     if data.reactors then
         for nid, r in pairs(data.reactors) do
             ensureReactorEntry(_frame, e, nid)
             local entry = e.rx_entries[nid]
             if entry then
                 local status = r.active and "ONLINE" or "OFFLINE"
-                local rate   = util.formatRate(r.produced_last_t or 0)
-                entry.label:setText(nid .. ": " .. status .. "  " .. rate)
+                local rate   = util.formatRate(r.produced_last_t or 0, energy_unit)
+                entry.label:setText(truncate(
+                    nid .. ": " .. status .. "  " .. rate .. "  " .. graph.reactorLevelText(tonumber(r.control_rod_level)) .. "  " .. graph.reactorTempText(tonumber(r.fuel_temp)),
+                    e._rx_w
+                ))
                 entry.label:setForeground(r.active and COLORS.ok_fg or COLORS.alert_fg)
             end
         end

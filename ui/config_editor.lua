@@ -125,6 +125,38 @@ local function normalizePercent(raw)
     return true, value
 end
 
+local function normalizePersistenceMode(raw)
+    local text = string.lower(trim(raw))
+    local aliases = {
+        memory = "memory_only",
+        memory_only = "memory_only",
+        prompt = "prompt_when_disk_detected",
+        prompt_when_disk_detected = "prompt_when_disk_detected",
+        disk = "disk_enabled",
+        disk_enabled = "disk_enabled",
+    }
+    local normalized = aliases[text]
+    if normalized == nil then
+        return false, nil, "Use memory, prompt, or disk"
+    end
+    return true, normalized
+end
+
+local function persistenceLabel(value)
+    if value == "disk_enabled" then return "Disk enabled" end
+    if value == "memory_only" then return "Memory only" end
+    if value == "prompt_when_disk_detected" then return "Ask when disk detected" end
+    return "--"
+end
+
+local function normalizeEnergyUnit(raw)
+    local text = string.upper(trim(raw))
+    if text ~= "FE" and text ~= "RF" then
+        return false, nil, "Use FE or RF"
+    end
+    return true, text
+end
+
 local function detectSingleValidModem(savedSide)
     if type(savedSide) == "string" and savedSide ~= "" then
         local peripheralRef = pmgr.wrap(savedSide)
@@ -181,6 +213,8 @@ function editor.run(cfg)
         threshold_low = cfg.threshold_low,
         threshold_high = cfg.threshold_high,
         update_check_interval = cfg.update_check_interval,
+        history_persistence_mode = cfg.history_persistence_mode,
+        energy_unit = cfg.energy_unit,
     }
     if edits.auto_ctrl == nil then edits.auto_ctrl = true end
     if edits.threshold_low == nil then edits.threshold_low = 0.25 end
@@ -300,6 +334,8 @@ function editor.run(cfg)
             threshold_low = pctStr(edits.threshold_low),
             threshold_high = pctStr(edits.threshold_high),
             update_check_interval = tostring(edits.update_check_interval or 90) .. "s",
+            history_persistence_mode = persistenceLabel(edits.history_persistence_mode),
+            energy_unit = tostring(edits.energy_unit or "FE"),
         }
         for key, ref in pairs(summary_refs) do
             local text = values[key] or "--"
@@ -368,6 +404,8 @@ function editor.run(cfg)
             row = addSummaryRow(panels.summary, row, "Low", "threshold_low")
             row = addSummaryRow(panels.summary, row, "High", "threshold_high")
             row = addSummaryRow(panels.summary, row, "Upd check", "update_check_interval")
+            row = addSummaryRow(panels.summary, row, "History", "history_persistence_mode")
+            row = addSummaryRow(panels.summary, row, "Units", "energy_unit")
         end
     end
 
@@ -443,6 +481,10 @@ function editor.run(cfg)
             row = registerInput(panels.control, row, "Update check interval seconds (>=15)", "update_check_interval", edits.update_check_interval or 90, function(raw)
                 return normalizeNumber(raw, false, 15)
             end)
+            row = registerInput(panels.control, row, "Energy unit label [FE/RF]", "energy_unit", edits.energy_unit or "FE", normalizeEnergyUnit)
+            row = registerInput(panels.control, row, "History persistence [memory/prompt/disk]", "history_persistence_mode", edits.history_persistence_mode or "prompt", normalizePersistenceMode)
+            row = addNote(panels.control, row, "memory = never use disk, prompt = ask once when a disk is present, disk = always use disk if available.")
+            row = addNote(panels.control, row, "Matrix values are normalized to FE-equivalent numbers; this setting changes the displayed FE/RF label.")
         end
     end
 
@@ -515,6 +557,8 @@ function editor.run(cfg)
         cfg.threshold_low = edits.threshold_low
         cfg.threshold_high = edits.threshold_high
         cfg.update_check_interval = edits.update_check_interval
+        cfg.history_persistence_mode = edits.history_persistence_mode
+        cfg.energy_unit = edits.energy_unit
         cfg.config_version = currentSchemaVersion
 
         config.replace(cfg)

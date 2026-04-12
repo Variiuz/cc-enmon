@@ -16,7 +16,7 @@
 --   update_check_interval number seconds between controller manifest checks (default 90)
 
 local CONFIG_PATH = "enmon.cfg"
-local CONFIG_VERSION = 5
+local CONFIG_VERSION = 7
 
 local DEFAULTS = {
     role           = nil,
@@ -31,6 +31,8 @@ local DEFAULTS = {
     threshold_low  = 0.25,
     threshold_high = 0.90,
     update_check_interval = 90,
+    history_persistence_mode = "prompt_when_disk_detected",
+    energy_unit = "FE",
 }
 
 local config = {}
@@ -87,6 +89,32 @@ local function normalizeText(value, fallback, allowBlank)
     return text
 end
 
+local function normalizePersistenceMode(value, fallback)
+    local text = normalizeText(value, fallback, false)
+    if text == nil then return fallback end
+
+    local aliases = {
+        memory = "memory_only",
+        memory_only = "memory_only",
+        prompt = "prompt_when_disk_detected",
+        prompt_when_disk_detected = "prompt_when_disk_detected",
+        disk = "disk_enabled",
+        disk_enabled = "disk_enabled",
+    }
+
+    return aliases[string.lower(text)] or fallback
+end
+
+local function normalizeEnergyUnit(value, fallback)
+    local text = normalizeText(value, fallback, false)
+    if text == nil then return fallback end
+    text = string.upper(text)
+    if text ~= "FE" and text ~= "RF" then
+        return fallback
+    end
+    return text
+end
+
 local function sanitizeRoleConfig(data, meta)
     if data.role ~= "controller" then
         if data.speaker_side ~= nil then note(meta, "Removed controller-only speaker setting") end
@@ -134,6 +162,8 @@ local function normalizeData(input)
     raw.update_check_interval = normalizeInteger(raw.update_check_interval, nil)
     raw.threshold_low = normalizeThreshold(raw.threshold_low, nil)
     raw.threshold_high = normalizeThreshold(raw.threshold_high, nil)
+    raw.history_persistence_mode = normalizePersistenceMode(raw.history_persistence_mode, DEFAULTS.history_persistence_mode)
+    raw.energy_unit = normalizeEnergyUnit(raw.energy_unit, DEFAULTS.energy_unit)
 
     if raw.auto_ctrl == nil then
         raw.auto_ctrl = DEFAULTS.auto_ctrl
@@ -175,6 +205,15 @@ local function normalizeData(input)
             raw.update_check_interval = DEFAULTS.update_check_interval
             note(meta, "Applied default controller update check interval")
         end
+    end
+
+    if raw.history_persistence_mode ~= "memory_only" and raw.history_persistence_mode ~= "prompt_when_disk_detected" and raw.history_persistence_mode ~= "disk_enabled" then
+        raw.history_persistence_mode = DEFAULTS.history_persistence_mode
+        note(meta, "Applied default history persistence mode")
+    end
+    if raw.energy_unit ~= "FE" and raw.energy_unit ~= "RF" then
+        raw.energy_unit = DEFAULTS.energy_unit
+        note(meta, "Applied default energy unit")
     end
 
     sanitizeRoleConfig(raw, meta)

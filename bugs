@@ -1,0 +1,1 @@
+- Resolved in 0.4.0: Mekanism induction matrix values are normalized to FE-equivalent numbers before display, and the controller config editor now exposes an `Energy unit label` field with `FE` default and optional `RF` labeling.

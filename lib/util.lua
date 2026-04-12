@@ -4,33 +4,44 @@
 local util = {}
 
 local SUFFIXES = {"", "k", "M", "G", "T", "P"}
+local DEFAULT_ENERGY_UNIT = "FE"
 
--- Format an energy value (in RF) to a human-readable string with suffix.
--- e.g. 1500000 -> "1.50 MRF"
-function util.formatEnergy(rf)
-    if type(rf) ~= "number" then return "N/A" end
-    local v = math.abs(rf)
-    local idx = 1
-    while v >= 1000 and idx < #SUFFIXES do
-        v = v / 1000
-        idx = idx + 1
+function util.normalizeEnergyUnit(value, fallback)
+    local text = tostring(value or fallback or DEFAULT_ENERGY_UNIT):upper()
+    if text == "FE" or text == "RF" then
+        return text
     end
-    if rf < 0 then v = -v end
-    return string.format("%.2f %sRF", v, SUFFIXES[idx])
+    return tostring(fallback or DEFAULT_ENERGY_UNIT):upper()
 end
 
--- Format a per-tick rate (RF/t) to a human-readable string.
--- e.g. 50000 -> "50.00 kRF/t"
-function util.formatRate(rf_t)
-    if type(rf_t) ~= "number" then return "N/A" end
-    local v = math.abs(rf_t)
+function util.joulesToFe(value)
+    if type(value) ~= "number" then return 0 end
+    return value / 2.5
+end
+
+-- Format an energy value (in FE/RF) to a human-readable string with suffix.
+function util.formatEnergy(value, unit)
+    if type(value) ~= "number" then return "N/A" end
+    local v = math.abs(value)
     local idx = 1
     while v >= 1000 and idx < #SUFFIXES do
         v = v / 1000
         idx = idx + 1
     end
-    if rf_t < 0 then v = -v end
-    return string.format("%.2f %sRF/t", v, SUFFIXES[idx])
+    if value < 0 then v = -v end
+    return string.format("%.2f %s%s", v, SUFFIXES[idx], util.normalizeEnergyUnit(unit, DEFAULT_ENERGY_UNIT))
+end
+
+function util.formatRate(value, unit)
+    if type(value) ~= "number" then return "N/A" end
+    local v = math.abs(value)
+    local idx = 1
+    while v >= 1000 and idx < #SUFFIXES do
+        v = v / 1000
+        idx = idx + 1
+    end
+    if value < 0 then v = -v end
+    return string.format("%.2f %s%s/t", v, SUFFIXES[idx], util.normalizeEnergyUnit(unit, DEFAULT_ENERGY_UNIT))
 end
 
 -- Clamp a value between min and max.
@@ -52,6 +63,11 @@ function util.formatPercent(fraction)
     return string.format("%.1f%%", fraction * 100)
 end
 
+function util.formatTemperature(temp)
+    if type(temp) ~= "number" then return "N/A" end
+    return string.format("%.0fC", temp)
+end
+
 -- Safe call: wraps fn(...) in a pcall. On error, logs the message and returns nil.
 -- Returns the first return value of fn on success.
 function util.safeCall(fn, ...)
@@ -63,14 +79,9 @@ function util.safeCall(fn, ...)
     return result, nil
 end
 
--- Timestamp string for display: HH:MM:SS using real wall-clock time when available.
+-- Timestamp string for display using ComputerCraft/Minecraft in-game time.
 function util.timestamp()
-    if os.epoch and os.date then
-        return os.date("%H:%M:%S", math.floor(os.epoch("utc") / 1000))
-    end
-
-    local t = os.time()
-    return textutils.formatTime(t, true)
+    return textutils.formatTime(os.time(), true)
 end
 
 return util

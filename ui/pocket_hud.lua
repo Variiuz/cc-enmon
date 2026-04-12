@@ -3,6 +3,7 @@
 -- Renders on the pocket computer's built-in terminal (39x13 chars).
 
 local util   = require("lib/util")
+local graph  = require("lib/graph")
 local basalt = require("lib/basalt")
 
 local hud = {}
@@ -21,11 +22,167 @@ local COLORS = {
 
 local _frame    = nil
 local _elements = {}
+local _tab = "overview"
+local _data = {}
+local _selected_reactor_id = nil
+
+local function truncate(text, width)
+    text = tostring(text or "")
+    if width <= 0 then return "" end
+    if #text <= width then return text end
+    if width <= 3 then return text:sub(1, width) end
+    return text:sub(1, width - 3) .. "..."
+end
 
 local function barColor(fill)
     if fill >= 0.75 then return colors.green
     elseif fill >= 0.40 then return colors.yellow
     else return colors.red end
+end
+
+local function renderSeries(samples, width, mapFn, formatFn)
+    return graph.renderHistoryLine(samples, width, mapFn, formatFn, "--")
+end
+
+local function setTab(name)
+    _tab = name or "overview"
+    local e = _elements
+    if not e.tabs then return end
+
+    for tab_name, spec in pairs(e.tabs) do
+        local active = tab_name == _tab
+        spec.button:setBackground(active and colors.blue or colors.lightGray)
+        spec.button:setForeground(active and colors.white or colors.black)
+        spec.frame:setVisible(active)
+    end
+end
+
+local function ensureSelectedReactor(data)
+    local reactors = data and data.reactors or nil
+    if type(reactors) ~= "table" then
+        _selected_reactor_id = nil
+        return nil
+    end
+
+    if _selected_reactor_id and reactors[_selected_reactor_id] then
+        return _selected_reactor_id
+    end
+
+    local ids = {}
+    for nid in pairs(reactors) do
+        ids[#ids + 1] = nid
+    end
+    table.sort(ids)
+    _selected_reactor_id = ids[1]
+    return _selected_reactor_id
+end
+
+local function cycleReactor(delta)
+    local reactors = _data and _data.reactors or nil
+    if type(reactors) ~= "table" then return end
+    local ids = {}
+    for nid in pairs(reactors) do
+        ids[#ids + 1] = nid
+    end
+    table.sort(ids)
+    if #ids == 0 then
+        _selected_reactor_id = nil
+        return
+    end
+
+    local current = 1
+    for index, nid in ipairs(ids) do
+        if nid == _selected_reactor_id then
+            current = index
+            break
+        end
+    end
+
+    current = current + delta
+    if current < 1 then current = #ids end
+    if current > #ids then current = 1 end
+    _selected_reactor_id = ids[current]
+end
+
+local function updateOverview(data)
+    local e = _elements
+    local energy_unit = data.energy_unit or "FE"
+    local m = data.matrix
+    if m and not data.matrix_stale then
+        local fill = util.fillFraction(m.energy, m.max_energy)
+        e.ov_mat_pct:setText(util.formatEnergy(m.energy, energy_unit) .. "  " .. util.formatPercent(fill))
+        e.ov_mat_bar:setProgress(fill * 100):setForeground(barColor(fill))
+        local net_flow = m.last_input - m.last_output
+        local sign = net_flow >= 0 and "+" or ""
+        e.ov_mat_flow:setText("Net: " .. sign .. util.formatRate(net_flow, energy_unit))
+    else
+        e.ov_mat_pct:setText("DISCONNECTED")
+        e.ov_mat_bar:setProgress(0)
+        e.ov_mat_flow:setText("")
+    end
+
+    local total_output = 0
+    local reactor_count = 0
+    local hottest = nil
+    for _, reactor in pairs(data.reactors or {}) do
+        reactor_count = reactor_count + 1
+        total_output = total_output + (tonumber(reactor.produced_last_t) or 0)
+        local fuel_temp = tonumber(reactor.fuel_temp)
+        if fuel_temp and (not hottest or fuel_temp > hottest) then
+            hottest = fuel_temp
+        end
+    end
+    e.ov_hist_line:setText(truncate("Fill " .. graph.renderMatrixFillLine(data.history or {}, e.hist_graph_w or 8), e._w or 20))
+    e.ov_rx_summary:setText(truncate("Reactors: " .. tostring(reactor_count) .. "  Out: " .. util.formatRate(total_output, energy_unit), e._w or 20))
+    e.ov_rx_temp:setText(hottest and ("Peak: " .. util.formatTemperature(hottest)) or "Peak: --")
+end
+
+local function updateHistory(data)
+    local e = _elements
+    local samples = data.history or {}
+    local energy_unit = data.energy_unit or "FE"
+    local fill_line, fill_latest = graph.renderMatrixFillLine(samples, e.hist_graph_w or 8)
+    local out_line, out_latest = graph.renderReactorOutputLine(samples, e.hist_graph_w or 8, energy_unit)
+    local temp_line, temp_latest = graph.renderPeakTempLine(samples, e.hist_graph_w or 8)
+
+    e.hist_fill_line:setText(truncate("Fill " .. fill_line .. " " .. fill_latest, e._w or 20))
+    e.hist_out_line:setText(truncate("Out  " .. out_line .. " " .. out_latest, e._w or 20))
+    e.hist_temp_line:setText(truncate("Temp " .. temp_line .. " " .. temp_latest, e._w or 20))
+    e.hist_meta:setText("Samples: " .. tostring(#samples))
+end
+
+local function updateReactors(data)
+    local e = _elements
+    local energy_unit = data.energy_unit or "FE"
+    local selected = ensureSelectedReactor(data)
+    if not selected or not data.reactors or not data.reactors[selected] then
+        e.rx_title:setText(" Reactor")
+        e.rx_status:setText("No reactor data")
+        e.rx_rate:setText("")
+        e.rx_rod:setText("")
+        e.rx_fuel:setText("")
+        e.rx_temp:setText("")
+        e.rx_casing:setText("")
+        return
+    end
+
+    local reactor = data.reactors[selected]
+    e.rx_title:setText(truncate(" Reactor " .. tostring(selected), e._w or 20))
+    e.rx_status:setText((reactor.active and "ONLINE" or "OFFLINE") .. "  " .. (reactor.connected == false and "DISC" or "LINK"))
+    e.rx_rate:setText(truncate("Out: " .. util.formatRate(reactor.produced_last_t or 0, energy_unit), e._w or 20))
+    e.rx_rod:setText(truncate(
+        "Rod: " .. (reactor.control_rod_level ~= nil and (tostring(math.floor((reactor.control_rod_level or 0) + 0.5)) .. "%") or "--") ..
+        "  Fuel: " .. (reactor.fuel_fill ~= nil and util.formatPercent(reactor.fuel_fill) or "--"),
+        e._w or 20
+    ))
+    e.rx_fuel:setText(truncate(
+        "Fuel: " .. tostring(math.floor((tonumber(reactor.fuel_amount) or 0) + 0.5)) ..
+        "/" .. tostring(math.floor((tonumber(reactor.fuel_amount_max) or 0) + 0.5)) ..
+        "  W: " .. tostring(math.floor((tonumber(reactor.waste_amount) or 0) + 0.5)),
+        e._w or 20
+    ))
+    e.rx_temp:setText("FuelT: " .. (reactor.fuel_temp and util.formatTemperature(reactor.fuel_temp) or "--"))
+    e.rx_casing:setText("CaseT: " .. (reactor.casing_temp and util.formatTemperature(reactor.casing_temp) or "--"))
 end
 
 function hud.init()
@@ -51,48 +208,111 @@ function hud.init()
         :setBackground(COLORS.bg):setForeground(COLORS.ok_fg)
         :setText("  Connecting...")
 
-    -- Matrix section
-    _frame:addLabel():setPosition(1, 4):setSize(w, 1)
+    e.tabs = {}
+    local tab_w = math.max(9, math.floor(w / 3))
+    local function addTab(name, label, x)
+        local button = _frame:addButton()
+            :setPosition(x, 3):setSize(tab_w, 1)
+            :setText(label)
+            :setBackground(colors.lightGray):setForeground(colors.black)
+            :onClick(function()
+                setTab(name)
+                hud.update(_data or {})
+            end)
+        local frame = _frame:addFrame():setPosition(1, 4):setSize(w, math.max(1, h - 3)):setBackground(COLORS.bg)
+        e.tabs[name] = { button = button, frame = frame }
+        return frame
+    end
+
+    local overview = addTab("overview", " Overview ", 1)
+    local historyFrame = addTab("history", " History ", tab_w + 1)
+    local reactorsFrame = addTab("reactors", " Reactors ", (tab_w * 2) + 1)
+
+    overview:addLabel():setPosition(1, 1):setSize(w, 1)
         :setBackground(COLORS.bg):setForeground(colors.yellow):setText(" Matrix")
-
-    e.mat_pct = _frame:addLabel()
-        :setPosition(2, 5):setSize(w-1, 1)
+    e.ov_mat_pct = overview:addLabel()
+        :setPosition(2, 2):setSize(w - 1, 1)
         :setBackground(COLORS.bg):setForeground(COLORS.value):setText("--")
-
-    e.mat_bar = _frame:addProgressBar()
-        :setPosition(1, 6):setSize(w, 1):setDirection("horizontal")
+    e.ov_mat_bar = overview:addProgressBar()
+        :setPosition(1, 3):setSize(w, 1):setDirection("horizontal")
         :setProgress(0):setBackground(COLORS.bar_empty):setForeground(COLORS.bar_full)
-
-    e.mat_flow = _frame:addLabel()
-        :setPosition(2, 7):setSize(w-1, 1)
+    e.ov_mat_flow = overview:addLabel()
+        :setPosition(2, 4):setSize(w - 1, 1)
         :setBackground(COLORS.bg):setForeground(COLORS.label):setText("+-- / ---")
+    e.ov_hist_line = overview:addLabel()
+        :setPosition(1, 6):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Fill ______ --")
+    e.ov_rx_summary = overview:addLabel()
+        :setPosition(1, 8):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(colors.yellow):setText("Reactors: --")
+    e.ov_rx_temp = overview:addLabel()
+        :setPosition(2, 9):setSize(w - 1, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Peak: --")
 
-    -- Reactor section
-    _frame:addLabel():setPosition(1, 9):setSize(w, 1)
-        :setBackground(COLORS.bg):setForeground(colors.yellow):setText(" Reactors")
+    historyFrame:addLabel():setPosition(1, 1):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(colors.yellow):setText(" History")
+    e.hist_fill_line = historyFrame:addLabel()
+        :setPosition(1, 2):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.value):setText("Fill ______ --")
+    e.hist_out_line = historyFrame:addLabel()
+        :setPosition(1, 4):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Out  ______ --")
+    e.hist_temp_line = historyFrame:addLabel()
+        :setPosition(1, 6):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Temp ______ --")
+    e.hist_meta = historyFrame:addLabel()
+        :setPosition(1, 8):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Samples: 0")
 
-    e.rx_lines = {}  -- built on first update
+    reactorsFrame:addButton()
+        :setPosition(1, 1):setSize(6, 1)
+        :setText(" Prev ")
+        :setBackground(colors.lightGray):setForeground(colors.black)
+        :onClick(function()
+            cycleReactor(-1)
+            hud.update(_data or {})
+        end)
+    reactorsFrame:addButton()
+        :setPosition(w - 5, 1):setSize(6, 1)
+        :setText(" Next ")
+        :setBackground(colors.lightGray):setForeground(colors.black)
+        :onClick(function()
+            cycleReactor(1)
+            hud.update(_data or {})
+        end)
+    e.rx_title = reactorsFrame:addLabel()
+        :setPosition(8, 1):setSize(math.max(1, w - 14), 1)
+        :setBackground(COLORS.bg):setForeground(colors.yellow):setText(" Reactor")
+    e.rx_status = reactorsFrame:addLabel()
+        :setPosition(1, 3):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.value):setText("No reactor data")
+    e.rx_rate = reactorsFrame:addLabel()
+        :setPosition(1, 4):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("")
+    e.rx_rod = reactorsFrame:addLabel()
+        :setPosition(1, 5):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("")
+    e.rx_fuel = reactorsFrame:addLabel()
+        :setPosition(1, 6):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("")
+    e.rx_temp = reactorsFrame:addLabel()
+        :setPosition(1, 7):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("")
+    e.rx_casing = reactorsFrame:addLabel()
+        :setPosition(1, 8):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("")
+
+    e.hist_graph_w = math.max(6, w - 14)
 
     _elements = e
     _elements._w = w
     _elements._h = h
-end
-
-local function ensureReactorLine(nid)
-    if _elements.rx_lines[nid] then return end
-    local count = 0
-    for _ in pairs(_elements.rx_lines) do count = count + 1 end
-    local row = 10 + count
-    local w = _elements._w
-    local lbl = _frame:addLabel()
-        :setPosition(2, row):setSize(w-1, 1)
-        :setBackground(COLORS.bg):setForeground(COLORS.label)
-        :setText(nid .. ": --")
-    _elements.rx_lines[nid] = lbl
+    setTab("overview")
 end
 
 function hud.update(data)
     if not _frame then return end
+    _data = data or {}
     local e = _elements
 
     e.clock:setText(data.timestamp or "--:--:--")
@@ -105,33 +325,9 @@ function hud.update(data)
         e.alert:setText("  All nominal")
         e.alert:setForeground(COLORS.ok_fg)
     end
-
-    -- Matrix
-    local m = data.matrix
-    if m and not data.matrix_stale then
-        local fill = util.fillFraction(m.energy, m.max_energy)
-        e.mat_pct:setText(util.formatEnergy(m.energy) .. "  " .. util.formatPercent(fill))
-        e.mat_bar:setProgress(fill * 100):setForeground(barColor(fill))
-        local net_flow = m.last_input - m.last_output
-        local sign = net_flow >= 0 and "+" or ""
-        e.mat_flow:setText("Net: " .. sign .. util.formatRate(net_flow))
-    else
-        e.mat_pct:setText("DISCONNECTED")
-        e.mat_bar:setProgress(0)
-        e.mat_flow:setText("")
-    end
-
-    -- Reactors
-    if data.reactors then
-        for nid, r in pairs(data.reactors) do
-            ensureReactorLine(nid)
-            local lbl = _elements.rx_lines[nid]
-            local status = r.active and "ON " or "OFF"
-            local rate   = util.formatRate(r.produced_last_t or 0)
-            lbl:setText(nid .. ":" .. status .. " " .. rate)
-            lbl:setForeground(r.active and COLORS.ok_fg or COLORS.label)
-        end
-    end
+    updateOverview(data)
+    updateHistory(data)
+    updateReactors(data)
 end
 
 function hud.run()

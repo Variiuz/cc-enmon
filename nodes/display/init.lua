@@ -1,4 +1,4 @@
--- nodes/display.lua
+-- nodes/display/init.lua
 -- Display node: listens for DISPLAY_UPDATE from the Controller and renders
 -- the read-only HUD on an attached monitor.
 --
@@ -9,34 +9,26 @@ local controller_link = require("lib/controller_link")
 local identity = require("lib/node_identity")
 local pmgr = require("lib/peripheral_mgr")
 local hud  = require("ui/display_hud")
-local runtime_panel = require("ui/runtime_panel")
 local runtime_actions = require("lib/runtime_actions")
 local update_service = require("lib/update_service")
-local version = require("lib/version")
+local node_runtime = require("lib/node_runtime")
 
 local MODEM_TYPE = "ender_modem"
 
 local display = {}
-local BRANCH = version.getBranchLabel()
 
 function display.run(cfg)
     local claim_code = controller_link.newClaimCode()
-    local runtime_ui = runtime_panel.new("Display Node")
-    local function logLine(msg, fg) runtime_ui.log(msg, fg) end
-    local function updatePanel(status, detail, color)
-        runtime_ui.setSummary({
-            { "Node", tostring(cfg.get("node_id")) },
-            { "Version", tostring(version.getVersion()) },
-            { "Branch", tostring(BRANCH) },
-            { "Channel", tostring(cfg.get("channel")) },
-            { "Modem", tostring(cfg.get("modem_side") or "auto") },
-            { "Monitor", tostring(cfg.get("monitor_side")) },
-            { "Status", status, color or colors.black, colors.white },
-            { "Detail", detail or "--" },
-        })
-    end
-
-    runtime_ui.setHint("C Config")
+    local runtime = node_runtime.create("Display Node", cfg, {
+        extra_rows = function(local_cfg)
+            return {
+                { "Monitor", tostring(local_cfg.get("monitor_side")) },
+            }
+        end,
+    })
+    local logLine = runtime.log
+    local updatePanel = runtime.updatePanel
+    runtime.setHint("C Config")
     logLine("[display] Starting display node: " .. cfg.get("node_id"), colors.lime)
     updatePanel("Booting", "Opening network", colors.black)
 
@@ -90,7 +82,7 @@ function display.run(cfg)
     local function key_loop()
         while true do
             local _, key = os.pullEvent("key")
-            if runtime_ui.handleKey(key) then
+            if runtime.handleKey(key) then
             elseif key == keys.c then
                 runtime_action = "config"
                 return
