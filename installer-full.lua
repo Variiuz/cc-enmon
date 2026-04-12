@@ -27,7 +27,7 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.3.9", 1)
+local VERSION    = composeReleaseLabel("0.3.9", 2)
 local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"

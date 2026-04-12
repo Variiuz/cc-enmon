@@ -63,8 +63,12 @@ function util.safeCall(fn, ...)
     return result, nil
 end
 
--- Timestamp string for display: HH:MM:SS
+-- Timestamp string for display: HH:MM:SS using real wall-clock time when available.
 function util.timestamp()
+    if os.epoch and os.date then
+        return os.date("%H:%M:%S", math.floor(os.epoch("utc") / 1000))
+    end
+
     local t = os.time()
     return textutils.formatTime(t, true)
 end

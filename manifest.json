@@ -39,7 +39,7 @@
       "ui/pocket_hud.lua"
     ]
   },
-  "manifest_revision": 1,
+  "manifest_revision": 2,
   "hashes": {
     "installer.lua": "5c5709f74f04878bb64c28107461407af9297ccf86b01937b458618f6904ce2d",
     "lib/basalt.lua": "1885c88b48ff55a12d6648a44d89c2418bf920f15f62713c74217a368c00d887",
@@ -47,8 +47,8 @@
     "enmon-cli.lua": "a6c0eec2c3fbdacb233ebc3692862edefb51751e86e9afbaa5bb76a207915560",
     "lib/config.lua": "deae1e608b0c1cc7ea7322bac4e0cd6ea1c38037f6a668cfaa54774cdcb58a72",
     "lib/runtime_actions.lua": "4170b9b1af031790c64c9f5f024467c2d008daaddbea9305f2955ccc95a24f18",
-    "lib/util.lua": "bbde7977cfbd9344793c9264e47afdd31640bb7c69f0c6eb3adb3d6cda991786",
-    "lib/version.lua": "5244f810e8bff5512d2f5ba8055fe4f49c17edc79e3190e0c3cca8ab6c420fa8",
+    "lib/util.lua": "5b1ebd0bcdf81e8eb82e1eb20fd76a14eb4406e125d7a4ca038df85bba834c67",
+    "lib/version.lua": "9735239ef55e1c86484e703ecb0115e1c9e1aa4930800d4faebc5dedd225d04c",
     "lib/hmac.lua": "ed1a411e072074c8f0c66fcb21d4b28108dc4a3bf415f9c644367d5b283dc974",
     "lib/network.lua": "fc60f0d3830bcca1501030c0803eced3898a18ba13308cad5bed1389dbfe8656",
     "lib/controller_link.lua": "ac18ed394e1f6e82dc5febf6b021a94a01c7b0d2a1ef427b3748f658db57a6d3",

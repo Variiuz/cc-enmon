@@ -183,6 +183,15 @@
       "notes": [
         "Fix missing controller_link module in managed installs"
       ]
+    },
+    {
+      "version": "0.3.9",
+      "manifest_revision": 2,
+      "date": "2026-04-12",
+      "git_head": null,
+      "notes": [
+        "Use real local wall-clock timestamps in HUDs"
+      ]
     }
   ]
 }
