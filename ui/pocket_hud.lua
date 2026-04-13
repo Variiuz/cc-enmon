@@ -34,14 +34,20 @@ local function truncate(text, width)
     return text:sub(1, width - 3) .. "..."
 end
 
+local function setGraphRows(labels, rows, width, fg)
+    local blank = string.rep(" ", math.max(1, width or 1))
+    for index, label in ipairs(labels or {}) do
+        label:setText(rows and rows[index] or blank)
+        if fg then
+            label:setForeground(fg)
+        end
+    end
+end
+
 local function barColor(fill)
     if fill >= 0.75 then return colors.green
     elseif fill >= 0.40 then return colors.yellow
     else return colors.red end
-end
-
-local function renderSeries(samples, width, mapFn, formatFn)
-    return graph.renderHistoryLine(samples, width, mapFn, formatFn, "--")
 end
 
 local function setTab(name)
@@ -110,15 +116,17 @@ local function updateOverview(data)
     local m = data.matrix
     if m and not data.matrix_stale then
         local fill = util.fillFraction(m.energy, m.max_energy)
-        e.ov_mat_pct:setText(util.formatEnergy(m.energy, energy_unit) .. "  " .. util.formatPercent(fill))
-        e.ov_mat_bar:setProgress(fill * 100):setForeground(barColor(fill))
-        local net_flow = m.last_input - m.last_output
-        local sign = net_flow >= 0 and "+" or ""
-        e.ov_mat_flow:setText("Net: " .. sign .. util.formatRate(net_flow, energy_unit))
+        local fill_rows, fill_latest = graph.renderMatrixFillBars(data.history or {}, e.hist_graph_w or 8, 2)
+        e.ov_mat_pct:setText(truncate(util.formatEnergy(m.energy, energy_unit) .. "  " .. util.formatPercent(fill), e._w or 20))
+        e.ov_mat_fill:setText("Fill " .. fill_latest)
+        e.ov_mat_flow:setText(truncate("In +" .. util.formatRate(m.last_input or 0, energy_unit) .. "  Out -" .. util.formatRate(m.last_output or 0, energy_unit), e._w or 20))
+        setGraphRows(e.ov_mat_graph_rows, fill_rows, e.hist_graph_w or 8, barColor(fill))
     else
         e.ov_mat_pct:setText("DISCONNECTED")
-        e.ov_mat_bar:setProgress(0)
+        e.ov_mat_fill:setText("Fill --")
         e.ov_mat_flow:setText("")
+        local fill_rows = select(1, graph.renderMatrixFillBars(data.history or {}, e.hist_graph_w or 8, 2))
+        setGraphRows(e.ov_mat_graph_rows, fill_rows, e.hist_graph_w or 8, COLORS.label)
     end
 
     local total_output = 0
@@ -132,7 +140,6 @@ local function updateOverview(data)
             hottest = fuel_temp
         end
     end
-    e.ov_hist_line:setText(truncate("Fill " .. graph.renderMatrixFillLine(data.history or {}, e.hist_graph_w or 8), e._w or 20))
     e.ov_rx_summary:setText(truncate("Reactors: " .. tostring(reactor_count) .. "  Out: " .. util.formatRate(total_output, energy_unit), e._w or 20))
     e.ov_rx_temp:setText(hottest and ("Peak: " .. util.formatTemperature(hottest)) or "Peak: --")
 end
@@ -141,14 +148,16 @@ local function updateHistory(data)
     local e = _elements
     local samples = data.history or {}
     local energy_unit = data.energy_unit or "FE"
-    local fill_line, fill_latest = graph.renderMatrixFillLine(samples, e.hist_graph_w or 8)
-    local out_line, out_latest = graph.renderReactorOutputLine(samples, e.hist_graph_w or 8, energy_unit)
-    local temp_line, temp_latest = graph.renderPeakTempLine(samples, e.hist_graph_w or 8)
+    local fill_rows, fill_latest = graph.renderMatrixFillBars(samples, e.hist_graph_w or 8, 2)
+    local out_rows, out_latest = graph.renderReactorOutputBars(samples, e.hist_graph_w or 8, 2, energy_unit)
+    local temp_rows, temp_latest = graph.renderPeakTempBars(samples, e.hist_graph_w or 8, 2)
 
-    e.hist_fill_line:setText(truncate("Fill " .. fill_line .. " " .. fill_latest, e._w or 20))
-    e.hist_out_line:setText(truncate("Out  " .. out_line .. " " .. out_latest, e._w or 20))
-    e.hist_temp_line:setText(truncate("Temp " .. temp_line .. " " .. temp_latest, e._w or 20))
-    e.hist_meta:setText("Samples: " .. tostring(#samples))
+    e.hist_fill_line:setText(truncate("Fill " .. fill_latest, e._w or 20))
+    setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or 8, colors.green)
+    e.hist_out_line:setText(truncate("Out  " .. out_latest, e._w or 20))
+    setGraphRows(e.hist_out_rows, out_rows, e.hist_graph_w or 8, colors.orange)
+    e.hist_temp_line:setText(truncate("Temp " .. temp_latest, e._w or 20))
+    setGraphRows(e.hist_temp_rows, temp_rows, e.hist_graph_w or 8, colors.red)
 end
 
 local function updateReactors(data)
@@ -168,21 +177,21 @@ local function updateReactors(data)
 
     local reactor = data.reactors[selected]
     e.rx_title:setText(truncate(" Reactor " .. tostring(selected), e._w or 20))
-    e.rx_status:setText((reactor.active and "ONLINE" or "OFFLINE") .. "  " .. (reactor.connected == false and "DISC" or "LINK"))
-    e.rx_rate:setText(truncate("Out: " .. util.formatRate(reactor.produced_last_t or 0, energy_unit), e._w or 20))
+    local line_one, line_two = graph.reactorOverviewLines(selected, reactor, energy_unit)
+    e.rx_status:setText(truncate(line_one, e._w or 20))
+    e.rx_rate:setText(truncate(line_two, e._w or 20))
     e.rx_rod:setText(truncate(
-        "Rod: " .. (reactor.control_rod_level ~= nil and (tostring(math.floor((reactor.control_rod_level or 0) + 0.5)) .. "%") or "--") ..
-        "  Fuel: " .. (reactor.fuel_fill ~= nil and util.formatPercent(reactor.fuel_fill) or "--"),
+        "Fuel " .. (reactor.fuel_fill ~= nil and util.formatPercent(reactor.fuel_fill) or "--") ..
+        "  Waste " .. tostring(math.floor((tonumber(reactor.waste_amount) or 0) + 0.5)),
         e._w or 20
     ))
     e.rx_fuel:setText(truncate(
-        "Fuel: " .. tostring(math.floor((tonumber(reactor.fuel_amount) or 0) + 0.5)) ..
-        "/" .. tostring(math.floor((tonumber(reactor.fuel_amount_max) or 0) + 0.5)) ..
-        "  W: " .. tostring(math.floor((tonumber(reactor.waste_amount) or 0) + 0.5)),
+        "Fuel " .. tostring(math.floor((tonumber(reactor.fuel_amount) or 0) + 0.5)) ..
+        "/" .. tostring(math.floor((tonumber(reactor.fuel_amount_max) or 0) + 0.5)),
         e._w or 20
     ))
-    e.rx_temp:setText("FuelT: " .. (reactor.fuel_temp and util.formatTemperature(reactor.fuel_temp) or "--"))
-    e.rx_casing:setText("CaseT: " .. (reactor.casing_temp and util.formatTemperature(reactor.casing_temp) or "--"))
+    e.rx_temp:setText(truncate("FT " .. (reactor.fuel_temp and util.formatTemperature(reactor.fuel_temp) or "--"), e._w or 20))
+    e.rx_casing:setText(truncate("CT " .. (reactor.casing_temp and util.formatTemperature(reactor.casing_temp) or "--"), e._w or 20))
 end
 
 function hud.init()
@@ -233,15 +242,18 @@ function hud.init()
     e.ov_mat_pct = overview:addLabel()
         :setPosition(2, 2):setSize(w - 1, 1)
         :setBackground(COLORS.bg):setForeground(COLORS.value):setText("--")
-    e.ov_mat_bar = overview:addProgressBar()
-        :setPosition(1, 3):setSize(w, 1):setDirection("horizontal")
-        :setProgress(0):setBackground(COLORS.bar_empty):setForeground(COLORS.bar_full)
     e.ov_mat_flow = overview:addLabel()
-        :setPosition(2, 4):setSize(w - 1, 1)
+        :setPosition(2, 3):setSize(w - 1, 1)
         :setBackground(COLORS.bg):setForeground(COLORS.label):setText("+-- / ---")
-    e.ov_hist_line = overview:addLabel()
-        :setPosition(1, 6):setSize(w, 1)
-        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Fill ______ --")
+    e.ov_mat_fill = overview:addLabel()
+        :setPosition(1, 4):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Fill --")
+    e.ov_mat_graph_rows = {}
+    for index = 1, 2 do
+        e.ov_mat_graph_rows[index] = overview:addLabel()
+            :setPosition(1, 4 + index):setSize(w, 1)
+            :setBackground(COLORS.bg):setForeground(COLORS.value):setText(string.rep(" ", w))
+    end
     e.ov_rx_summary = overview:addLabel()
         :setPosition(1, 8):setSize(w, 1)
         :setBackground(COLORS.bg):setForeground(colors.yellow):setText("Reactors: --")
@@ -253,16 +265,31 @@ function hud.init()
         :setBackground(COLORS.bg):setForeground(colors.yellow):setText(" History")
     e.hist_fill_line = historyFrame:addLabel()
         :setPosition(1, 2):setSize(w, 1)
-        :setBackground(COLORS.bg):setForeground(COLORS.value):setText("Fill ______ --")
+        :setBackground(COLORS.bg):setForeground(COLORS.value):setText("Fill --")
+    e.hist_fill_rows = {}
+    for index = 1, 2 do
+        e.hist_fill_rows[index] = historyFrame:addLabel()
+            :setPosition(1, 2 + index):setSize(w, 1)
+            :setBackground(COLORS.bg):setForeground(colors.green):setText(string.rep(" ", w))
+    end
     e.hist_out_line = historyFrame:addLabel()
-        :setPosition(1, 4):setSize(w, 1)
-        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Out  ______ --")
+        :setPosition(1, 5):setSize(w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Out --")
+    e.hist_out_rows = {}
+    for index = 1, 2 do
+        e.hist_out_rows[index] = historyFrame:addLabel()
+            :setPosition(1, 5 + index):setSize(w, 1)
+            :setBackground(COLORS.bg):setForeground(colors.orange):setText(string.rep(" ", w))
+    end
     e.hist_temp_line = historyFrame:addLabel()
-        :setPosition(1, 6):setSize(w, 1)
-        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Temp ______ --")
-    e.hist_meta = historyFrame:addLabel()
         :setPosition(1, 8):setSize(w, 1)
-        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Samples: 0")
+        :setBackground(COLORS.bg):setForeground(COLORS.label):setText("Temp --")
+    e.hist_temp_rows = {}
+    for index = 1, 2 do
+        e.hist_temp_rows[index] = historyFrame:addLabel()
+            :setPosition(1, 8 + index):setSize(w, 1)
+            :setBackground(COLORS.bg):setForeground(colors.red):setText(string.rep(" ", w))
+    end
 
     reactorsFrame:addButton()
         :setPosition(1, 1):setSize(6, 1)

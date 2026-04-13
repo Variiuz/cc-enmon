@@ -310,6 +310,16 @@
       "notes": [
         "Fix controller and display HUD startup crashes caused by stale renderHistoryLine call sites"
       ]
+    },
+    {
+      "version": "0.4.0",
+      "manifest_revision": 4,
+      "date": "2026-04-13",
+      "git_head": null,
+      "notes": [
+        "Replace sparkline history with vertical bar graphs and clearer matrix summaries",
+        "Split reactor/status readouts into more readable multi-line HUD layouts across controller, display, and pocket views"
+      ]
     }
   ]
 }

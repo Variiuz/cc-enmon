@@ -31,6 +31,16 @@ local function truncate(text, width)
     return text:sub(1, width - 3) .. "..."
 end
 
+local function setGraphRows(labels, rows, width, fg)
+    local blank = string.rep(" ", math.max(1, width or 1))
+    for index, label in ipairs(labels or {}) do
+        label:setText(rows and rows[index] or blank)
+        if fg then
+            label:setForeground(fg)
+        end
+    end
+end
+
 local function barColor(fill)
     if fill >= 0.75 then return colors.green
     elseif fill >= 0.40 then return colors.yellow
@@ -83,21 +93,23 @@ local function buildWide(frame, w, h)
     frame:addLabel():setPosition(2, py+4):setSize(9, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.label):setText("Output:")
 
-    e.mat_bar = frame:addProgressBar()
-        :setPosition(2, py+6):setSize(lw, 1):setDirection("horizontal")
-        :setProgress(0):setBackground(COLORS.bar_empty):setForeground(COLORS.bar_full)
-    e.mat_pct = frame:addLabel()
+    e.mat_fill_summary = frame:addLabel()
         :setPosition(2, py+7):setSize(lw, 1):setBackground(COLORS.bg)
-        :setForeground(COLORS.value):setText("0.0%")
+        :setForeground(COLORS.value):setText("Fill --")
 
-    e.hist_fill = frame:addLabel()
-        :setPosition(2, py+8):setSize(lw, 1):setBackground(COLORS.bg)
-        :setForeground(COLORS.muted or colors.lightGray):setText("Fill __________ --")
-    e.hist_output = frame:addLabel()
-        :setPosition(2, py+9):setSize(lw, 1):setBackground(COLORS.bg)
-        :setForeground(COLORS.muted or colors.lightGray):setText("Out  __________ --")
-    e.hist_graph_w = math.max(8, lw - 14)
-    e.hist_text_w = lw
+    e.hist_fill_rows = {}
+    for index = 1, 3 do
+        e.hist_fill_rows[index] = frame:addLabel()
+            :setPosition(2, py + 7 + index):setSize(lw, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.value):setText(string.rep(" ", lw))
+    end
+
+    e.mat_output_summary = frame:addLabel()
+        :setPosition(2, py + 11):setSize(lw, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.label):setText("In --  Out --")
+
+    e.hist_graph_w = math.max(8, lw - 2)
+    e.hist_graph_h = 3
 
     local rx = math.floor(w / 2) + 2
     e.rx_title = frame:addLabel()
@@ -131,21 +143,24 @@ local function buildNarrow(frame, w, h)
     e.mat_stored_val = frame:addLabel()
         :setPosition(1, py+1):setSize(w, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.value):setText("--")
-    e.mat_bar = frame:addProgressBar()
-        :setPosition(1, py+2):setSize(w, 1):setDirection("horizontal")
-        :setProgress(0):setBackground(COLORS.bar_empty):setForeground(COLORS.bar_full)
-    e.mat_pct = frame:addLabel()
-        :setPosition(1, py+3):setSize(w, 1):setBackground(COLORS.bg)
-        :setForeground(COLORS.value):setText("0.0%")
-    e.hist_fill = frame:addLabel()
-        :setPosition(1, py+4):setSize(w, 1):setBackground(COLORS.bg)
-        :setForeground(colors.lightGray):setText("Fill ______ --")
-    e.hist_graph_w = math.max(6, w - 14)
-    e.hist_text_w = w
-    frame:addLabel():setPosition(1, py+5):setSize(w, 1):setBackground(COLORS.bg)
+    e.mat_fill_summary = frame:addLabel()
+        :setPosition(1, py+2):setSize(w, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.value):setText("Fill --")
+    e.hist_fill_rows = {}
+    for index = 1, 2 do
+        e.hist_fill_rows[index] = frame:addLabel()
+            :setPosition(1, py + 2 + index):setSize(w, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.value):setText(string.rep(" ", w))
+    end
+    e.mat_output_summary = frame:addLabel()
+        :setPosition(1, py+5):setSize(w, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.label):setText("In --  Out --")
+    e.hist_graph_w = math.max(6, w)
+    e.hist_graph_h = 2
+    frame:addLabel():setPosition(1, py+7):setSize(w, 1):setBackground(COLORS.bg)
         :setForeground(colors.yellow):setText("[Reactors]")
     e.rx_entries = {}
-    e._rx_start_row = py + 6
+    e._rx_start_row = py + 7
     e._rx_x = 1
     e._rx_w = w
     return e
@@ -161,6 +176,10 @@ local function ensureReactorEntry(frame, e, nid)
         :setPosition(e._rx_x, row):setSize(e._rx_w, 1)
         :setBackground(COLORS.bg):setForeground(COLORS.label)
         :setText(nid .. ": --")
+    entry.detail = frame:addLabel()
+        :setPosition(e._rx_x, row + 1):setSize(e._rx_w, 1)
+        :setBackground(COLORS.bg):setForeground(colors.lightGray)
+        :setText("")
     e.rx_entries[nid] = entry
 end
 
@@ -196,28 +215,23 @@ function hud.update(data)
     end
 
     local m = data.matrix
+    local samples = data.history or {}
     if m and not data.matrix_stale then
         local fill = util.fillFraction(m.energy, m.max_energy)
         e.mat_stored_val:setText(util.formatEnergy(m.energy, energy_unit))
         if e.mat_max_val  then e.mat_max_val:setText(util.formatEnergy(m.max_energy, energy_unit)) end
         if e.mat_in_val   then e.mat_in_val:setText("+" .. util.formatRate(m.last_input, energy_unit)) end
         if e.mat_out_val  then e.mat_out_val:setText("-" .. util.formatRate(m.last_output, energy_unit)) end
-        e.mat_bar:setProgress(fill * 100):setForeground(barColor(fill))
-        e.mat_pct:setText(util.formatPercent(fill))
+        e.mat_fill_summary:setText("Fill " .. util.formatPercent(fill) .. "  Recent " .. select(2, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2)))
+        e.mat_output_summary:setText(truncate("In +" .. util.formatRate(m.last_input, energy_unit) .. "  Out -" .. util.formatRate(m.last_output, energy_unit), e._wide and (e.hist_graph_w or e._rx_w) or e._rx_w))
+        local fill_rows = select(1, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2))
+        setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or e._rx_w, barColor(fill))
     else
         e.mat_stored_val:setText("DISCONNECTED")
-        e.mat_bar:setProgress(0)
-        e.mat_pct:setText("--")
-    end
-
-    local samples = data.history or {}
-    if e.hist_fill then
-        local fill_line, fill_latest = graph.renderMatrixFillLine(samples, e.hist_graph_w or 10)
-        e.hist_fill:setText(truncate("Fill " .. fill_line .. " " .. fill_latest, e.hist_text_w or 20))
-    end
-    if e.hist_output then
-        local output_line, output_latest = graph.renderReactorOutputLine(samples, e.hist_graph_w or 10, energy_unit)
-        e.hist_output:setText(truncate("Out  " .. output_line .. " " .. output_latest, e.hist_text_w or 20))
+        e.mat_fill_summary:setText("Fill --")
+        e.mat_output_summary:setText("In --  Out --")
+        local fill_rows = select(1, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2))
+        setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or e._rx_w, colors.lightGray)
     end
 
     if data.reactors then
@@ -225,13 +239,11 @@ function hud.update(data)
             ensureReactorEntry(_frame, e, nid)
             local entry = e.rx_entries[nid]
             if entry then
-                local status = r.active and "ONLINE" or "OFFLINE"
-                local rate   = util.formatRate(r.produced_last_t or 0, energy_unit)
-                entry.label:setText(truncate(
-                    nid .. ": " .. status .. "  " .. rate .. "  " .. graph.reactorLevelText(tonumber(r.control_rod_level)) .. "  " .. graph.reactorTempText(tonumber(r.fuel_temp)),
-                    e._rx_w
-                ))
+                local line_one, line_two = graph.reactorOverviewLines(nid, r, energy_unit)
+                entry.label:setText(truncate(line_one, e._rx_w))
+                entry.detail:setText(truncate(line_two, e._rx_w))
                 entry.label:setForeground(r.active and COLORS.ok_fg or COLORS.alert_fg)
+                entry.detail:setForeground(colors.lightGray)
             end
         end
     end
