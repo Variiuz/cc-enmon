@@ -5,6 +5,8 @@
 local basalt = require("lib/basalt")
 local config = require("lib/config")
 local pmgr = require("lib/peripheral_mgr")
+local role_requirements = require("lib/role_requirements")
+local updater = require("lib/updater")
 local version = require("lib/version")
 
 local editor = {}
@@ -38,13 +40,7 @@ local COLORS = {
     err_fg        = colors.red,
 }
 
-local ROLE_LABELS = {
-    controller = "Controller",
-    matrix     = "Matrix Node",
-    reactor    = "Reactor Node",
-    display    = "Display Node",
-    pocket     = "Pocket",
-}
+local ROLE_LABELS = role_requirements.ROLE_LABELS
 
 local function trim(value)
     return tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -78,6 +74,16 @@ local function normalizeText(raw, optional)
         return false, nil, "Field cannot be blank"
     end
     return true, raw
+end
+
+local function normalizeRole(raw)
+    local ok, value, err = normalizeText(raw, false)
+    if not ok then return ok, value, err end
+    value = string.lower(value)
+    if not role_requirements.isValidRole(value) then
+        return false, nil, "Use controller/matrix/reactor/meter/generator/display/pocket"
+    end
+    return true, value
 end
 
 local function normalizeNumber(raw, optional, min, max)
@@ -198,6 +204,7 @@ function editor.run(cfg)
     local dirty = false
     local currentVersion = version.getVersion()
     local currentSchemaVersion = config.getCurrentVersion()
+    local originalRole = cfg.role
     local resolvedModemSide, modemSideLocked = detectSingleValidModem(cfg.modem_side)
     local modemAutoChanged = resolvedModemSide ~= cfg.modem_side and resolvedModemSide ~= nil
 
@@ -209,12 +216,15 @@ function editor.run(cfg)
         controller_id = cfg.controller_id,
         monitor_side = cfg.monitor_side,
         speaker_side = cfg.speaker_side,
+        bound_peripheral = cfg.bound_peripheral,
         auto_ctrl = cfg.auto_ctrl,
         threshold_low = cfg.threshold_low,
         threshold_high = cfg.threshold_high,
         update_check_interval = cfg.update_check_interval,
         history_persistence_mode = cfg.history_persistence_mode,
         energy_unit = cfg.energy_unit,
+        alert_redstone_side = cfg.alert_redstone_side,
+        alert_webhook_url = cfg.alert_webhook_url,
     }
     if edits.auto_ctrl == nil then edits.auto_ctrl = true end
     if edits.threshold_low == nil then edits.threshold_low = 0.25 end
@@ -336,6 +346,9 @@ function editor.run(cfg)
             update_check_interval = tostring(edits.update_check_interval or 90) .. "s",
             history_persistence_mode = persistenceLabel(edits.history_persistence_mode),
             energy_unit = tostring(edits.energy_unit or "FE"),
+            alert_redstone_side = edits.alert_redstone_side or "none",
+            alert_webhook_url = edits.alert_webhook_url and "set" or "none",
+            bound_peripheral = edits.bound_peripheral or "auto",
         }
         for key, ref in pairs(summary_refs) do
             local text = values[key] or "--"
@@ -372,10 +385,11 @@ function editor.run(cfg)
     local current_x = 1
     current_x = addTab("summary", "Summary", "Summary", current_x)
     current_x = addTab("network", "Network", "Network", current_x)
-    if cfg.role == "controller" or cfg.role == "display" then
+    local showHardware = edits.role == "controller" or edits.role == "display" or role_requirements.supportsBoundPeripheral(edits.role)
+    if showHardware then
         current_x = addTab("hardware", "Hardware", "Hardware", current_x)
     end
-    if cfg.role == "controller" then
+    if edits.role == "controller" then
         current_x = addTab("control", "Control", "Control", current_x)
     end
 
@@ -392,13 +406,16 @@ function editor.run(cfg)
         row = addSummaryRow(panels.summary, row, "Node ID", "node_id")
         row = addSummaryRow(panels.summary, row, "Channel", "channel")
         row = addSummaryRow(panels.summary, row, "Modem", "modem_side")
-        if cfg.role ~= "controller" then
+        if edits.role ~= "controller" then
             row = addSummaryRow(panels.summary, row, "Controller", "controller_id", nil, COLORS.warn_fg)
         end
-        if cfg.role == "controller" or cfg.role == "display" then
+        if role_requirements.supportsBoundPeripheral(edits.role) then
+            row = addSummaryRow(panels.summary, row, "Device", "bound_peripheral")
+        end
+        if edits.role == "controller" or edits.role == "display" then
             row = addSummaryRow(panels.summary, row, "Monitor", "monitor_side")
         end
-        if cfg.role == "controller" then
+        if edits.role == "controller" then
             row = addSummaryRow(panels.summary, row, "Speaker", "speaker_side")
             row = addSummaryRow(panels.summary, row, "Auto ctrl", "auto_ctrl")
             row = addSummaryRow(panels.summary, row, "Low", "threshold_low")
@@ -406,14 +423,18 @@ function editor.run(cfg)
             row = addSummaryRow(panels.summary, row, "Upd check", "update_check_interval")
             row = addSummaryRow(panels.summary, row, "History", "history_persistence_mode")
             row = addSummaryRow(panels.summary, row, "Units", "energy_unit")
+            row = addSummaryRow(panels.summary, row, "Alert RS", "alert_redstone_side")
+            row = addSummaryRow(panels.summary, row, "Webhook", "alert_webhook_url")
         end
     end
 
     panels.network = newPanel()
     do
         local row = 1
-        row = addNote(panels.network, row, cfg.role == "controller" and "Edit identity and network settings for this controller." or "Edit identity and channel settings. Controller linking is handled by adoption, not manual entry.")
+        row = addNote(panels.network, row, edits.role == "controller" and "Edit identity and network settings for this controller." or "Edit identity and channel settings. Controller linking is handled by adoption, not manual entry.")
         row = row + 1
+        row = registerInput(panels.network, row, "Role [controller/matrix/reactor/meter/generator/display/pocket]", "role", edits.role, normalizeRole)
+        row = addNote(panels.network, row, "Changing role saves then force-resyncs managed files. Press Launch afterward.", COLORS.warn_fg)
         row = registerInput(panels.network, row, "Node ID", "node_id", edits.node_id, function(raw)
             return normalizeText(raw, false)
         end)
@@ -429,30 +450,64 @@ function editor.run(cfg)
                 return normalizeText(raw, true)
             end)
         end
-        if cfg.role ~= "controller" then
+        if edits.role ~= "controller" then
             addNote(panels.network, row, "Current link: " .. (edits.controller_id and ("Controller " .. tostring(edits.controller_id)) or "Unlinked"), COLORS.value_fg)
         end
     end
 
-    if cfg.role == "controller" or cfg.role == "display" then
+    if showHardware then
         panels.hardware = newPanel()
         do
             local row = 1
-            row = addNote(panels.hardware, row, "Assign hardware sides or peripheral names.")
+            row = addNote(panels.hardware, row, "Assign hardware sides or peripheral names. Blank device binding means auto-find.")
             row = row + 1
-            row = registerInput(panels.hardware, row, "Monitor side/name", "monitor_side", edits.monitor_side, function(raw)
-                return normalizeText(raw, false)
-            end)
-            if cfg.role == "controller" then
+            if edits.role == "controller" or edits.role == "display" then
+                row = registerInput(panels.hardware, row, "Monitor side/name", "monitor_side", edits.monitor_side, function(raw)
+                    return normalizeText(raw, false)
+                end)
+            end
+            if role_requirements.supportsBoundPeripheral(edits.role) then
+                local bindReq = role_requirements.getBindRequirement(edits.role)
+                local matches = bindReq and role_requirements.findMatchingNames(bindReq.types) or {}
+                if #matches > 0 then
+                    row = addNote(panels.hardware, row, "Detected: " .. table.concat(matches, ", "), COLORS.hint_fg)
+                else
+                    row = addNote(panels.hardware, row, "No matching device peripherals detected yet (soft — runtime will wait).", COLORS.warn_fg)
+                end
+                row = registerInput(panels.hardware, row, "Bound peripheral name [blank=auto]", "bound_peripheral", edits.bound_peripheral, function(raw)
+                    return normalizeText(raw, true)
+                end)
+            end
+            if edits.role == "controller" then
                 row = registerInput(panels.hardware, row, "Speaker side/name", "speaker_side", edits.speaker_side, function(raw)
                     return normalizeText(raw, true)
                 end)
-                addNote(panels.hardware, row, "Leave speaker blank to disable alert sounds.")
+                row = addNote(panels.hardware, row, "Leave speaker blank to disable alert sounds.")
+                row = registerInput(panels.hardware, row, "Alert redstone side [top/bottom/left/right/front/back]", "alert_redstone_side", edits.alert_redstone_side, function(raw)
+                    local ok, value, err = normalizeText(raw, true)
+                    if not ok then return ok, value, err end
+                    if value == nil then return true, nil end
+                    value = string.lower(value)
+                    local valid = { top = true, bottom = true, left = true, right = true, front = true, back = true }
+                    if not valid[value] then
+                        return false, nil, "Use a computer side name"
+                    end
+                    return true, value
+                end)
+                row = registerInput(panels.hardware, row, "Alert webhook URL (Discord)", "alert_webhook_url", edits.alert_webhook_url, function(raw)
+                    local ok, value, err = normalizeText(raw, true)
+                    if not ok then return ok, value, err end
+                    if value == nil then return true, nil end
+                    if not tostring(value):find("^https?://", 1) then
+                        return false, nil, "URL must start with http:// or https://"
+                    end
+                    return true, value
+                end)
             end
         end
     end
 
-    if cfg.role == "controller" then
+    if edits.role == "controller" then
         panels.control = newPanel()
         do
             local row = 1
@@ -512,16 +567,19 @@ function editor.run(cfg)
                 return false, err
             end
         end
+        if not role_requirements.isValidRole(edits.role) then
+            return false, "Role is required"
+        end
         if trim(edits.node_id) == "" then
             return false, "Node ID is required"
         end
         if type(edits.channel) ~= "number" or edits.channel < 1 or edits.channel > 65535 then
             return false, "Channel must be 1-65535"
         end
-        if (cfg.role == "controller" or cfg.role == "display") and trim(edits.monitor_side) == "" then
+        if (edits.role == "controller" or edits.role == "display") and trim(edits.monitor_side) == "" then
             return false, "Monitor side/name is required"
         end
-        if cfg.role == "controller" then
+        if edits.role == "controller" then
             if type(edits.auto_ctrl) ~= "boolean" then
                 return false, "Auto control must be true or false"
             end
@@ -547,26 +605,62 @@ function editor.run(cfg)
             return
         end
 
+        local roleChanged = edits.role ~= originalRole
+
+        cfg.role = edits.role
         cfg.node_id = edits.node_id
         cfg.channel = edits.channel
         cfg.modem_side = edits.modem_side
-        cfg.controller_id = edits.controller_id
         cfg.monitor_side = edits.monitor_side
         cfg.speaker_side = edits.speaker_side
+        cfg.bound_peripheral = edits.bound_peripheral
         cfg.auto_ctrl = edits.auto_ctrl
         cfg.threshold_low = edits.threshold_low
         cfg.threshold_high = edits.threshold_high
         cfg.update_check_interval = edits.update_check_interval
         cfg.history_persistence_mode = edits.history_persistence_mode
         cfg.energy_unit = edits.energy_unit
+        cfg.alert_redstone_side = edits.alert_redstone_side
+        cfg.alert_webhook_url = edits.alert_webhook_url
         cfg.config_version = currentSchemaVersion
+
+        if roleChanged then
+            cfg.controller_id = nil
+            cfg.controller_token = nil
+            edits.controller_id = nil
+            if not role_requirements.supportsBoundPeripheral(edits.role) then
+                cfg.bound_peripheral = nil
+                edits.bound_peripheral = nil
+            end
+        else
+            cfg.controller_id = edits.controller_id
+        end
 
         config.replace(cfg)
         config.save()
         cfg = config.export()
+        originalRole = cfg.role
 
         dirty = false
         refreshSummary()
+
+        if roleChanged then
+            setStatus("Role changed — syncing managed files...", COLORS.warn_fg)
+            local updateOk, updateResult = updater.applyLocalUpdate({
+                role = cfg.role,
+                force = true,
+                logger = function(message)
+                    setStatus(tostring(message), COLORS.hint_fg)
+                end,
+            })
+            if not updateOk then
+                setStatus("Config saved, but role file sync failed: " .. tostring(updateResult), COLORS.err_fg)
+                return
+            end
+            setStatus("Role updated. Press Launch to reload with the new role UI.", COLORS.ok_fg)
+            return
+        end
+
         setStatus("Configuration saved as schema v" .. tostring(cfg.config_version or currentSchemaVersion) .. ".", COLORS.ok_fg)
     end
 

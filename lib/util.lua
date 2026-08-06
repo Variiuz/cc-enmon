@@ -63,6 +63,56 @@ function util.formatPercent(fraction)
     return string.format("%.1f%%", fraction * 100)
 end
 
+function util.formatDuration(seconds)
+    local value = tonumber(seconds)
+    if not value or value < 0 or value ~= value or value == math.huge then
+        return "--"
+    end
+    value = math.floor(value + 0.5)
+    if value < 60 then
+        return tostring(value) .. "s"
+    end
+    if value < 3600 then
+        local minutes = math.floor(value / 60)
+        local secs = value % 60
+        return string.format("%dm %02ds", minutes, secs)
+    end
+    local hours = math.floor(value / 3600)
+    local minutes = math.floor((value % 3600) / 60)
+    return string.format("%dh %02dm", hours, minutes)
+end
+
+-- Estimate time-to-empty / time-to-full from matrix IO rates (FE/t).
+-- Returns eta_empty_s, eta_full_s, net_rate (positive = charging).
+function util.estimateEnergyEta(energy, max_energy, last_input, last_output)
+    local stored = tonumber(energy) or 0
+    local capacity = tonumber(max_energy) or 0
+    local input = tonumber(last_input) or 0
+    local output = tonumber(last_output) or 0
+    local net = input - output
+
+    local eta_empty, eta_full = nil, nil
+    if net < -1e-6 and stored > 0 then
+        -- ticks at 20 t/s
+        eta_empty = (stored / (-net)) / 20
+    end
+    if net > 1e-6 and capacity > stored then
+        eta_full = ((capacity - stored) / net) / 20
+    end
+    return eta_empty, eta_full, net
+end
+
+function util.formatEnergyEta(energy, max_energy, last_input, last_output)
+    local eta_empty, eta_full, net = util.estimateEnergyEta(energy, max_energy, last_input, last_output)
+    if net > 1e-6 and eta_full then
+        return "ETA full " .. util.formatDuration(eta_full), eta_empty, eta_full, net
+    end
+    if net < -1e-6 and eta_empty then
+        return "ETA empty " .. util.formatDuration(eta_empty), eta_empty, eta_full, net
+    end
+    return "ETA --", eta_empty, eta_full, net
+end
+
 function util.formatTemperature(temp)
     if type(temp) ~= "number" then return "N/A" end
     return string.format("%.0fC", temp)

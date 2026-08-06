@@ -8,8 +8,8 @@ local SOURCE_PATH = "enmon-source.json"
 local RAW_ROOT = "https://raw.githubusercontent.com/Variiuz/cc-enmon/"
 local FALLBACK = {
     version = "0.4.0",
-    manifest_revision = 4,
-    base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/",
+    manifest_revision = 7,
+    base_url = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/",
     rollout_policy = "controller-first",
 }
 
@@ -181,6 +181,18 @@ function version.isNewer(candidate, current)
 end
 
 return version
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

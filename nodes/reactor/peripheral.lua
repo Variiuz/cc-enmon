@@ -60,7 +60,14 @@ local function average(values)
     return total / #values
 end
 
-function peripheral_logic.findReactor()
+function peripheral_logic.findReactor(boundName)
+    if type(boundName) == "string" and boundName ~= "" then
+        local port = pmgr.wrap(boundName)
+        if port then
+            return port, peripheral.getType(boundName) or boundName
+        end
+    end
+
     for _, type_name in ipairs(REACTOR_TYPES) do
         local port = pmgr.find(type_name)
         if port then return port, type_name end
@@ -68,17 +75,25 @@ function peripheral_logic.findReactor()
     return nil, nil
 end
 
-function peripheral_logic.waitForReactor(logLine)
+function peripheral_logic.waitForReactor(logLine, boundName)
     if logLine then
         logLine("[reactor] Waiting for reactor peripheral...", colors.orange)
     end
     while true do
-        local port, type_name = peripheral_logic.findReactor()
+        local port, type_name = peripheral_logic.findReactor(boundName)
         if port then
             if logLine then
-                logLine("[reactor] Found: " .. type_name, colors.lime)
+                if boundName and type_name then
+                    logLine("[reactor] Using bound peripheral: " .. tostring(boundName), colors.lime)
+                else
+                    logLine("[reactor] Found: " .. tostring(type_name), colors.lime)
+                end
             end
             return port
+        end
+        if boundName and logLine then
+            logLine("[reactor] Bound peripheral missing (" .. tostring(boundName) .. "); waiting / falling back", colors.orange)
+            boundName = nil
         end
         os.sleep(1)
     end
@@ -90,7 +105,8 @@ function peripheral_logic.pollReactor(port)
 
     if active_err then return nil, active_err end
 
-    local energy_stored = callOptional(port, { "getEnergyStored", "getEnergyCapacity" })
+    -- Do not fall back to capacity: that makes fill look ~100% and breaks auto-control.
+    local energy_stored = callOptional(port, { "getEnergyStored" })
     local fuel_temp = callOptional(port, { "getFuelTemperature", "getTemperature" })
     local casing_temp = callOptional(port, { "getCasingTemperature" })
     local fuel_amount = callOptional(port, { "getFuelAmount" })

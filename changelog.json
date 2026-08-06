@@ -1,325 +1,355 @@
 {
-  "entries": [
-    {
-      "version": "0.1.0",
-      "date": null,
-      "git_head": null,
-      "notes": [
-        "Initial ENMON release with installer/setup flow and core role separation.",
-        "Basic controller, matrix, reactor, display, and pocket node support."
-      ]
-    },
-    {
-      "version": "0.2.0",
-      "date": null,
-      "git_head": null,
-      "notes": [
-        "Major TUI refresh for installer, config editor, and runtime panels.",
-        "Improved peripheral detection and post-install configuration editing."
-      ]
-    },
-    {
-      "version": "0.3.0",
-      "date": null,
-      "git_head": null,
-      "notes": [
-        "Introduced controller-coordinated updater flow and shared version metadata.",
-        "Added node identity announcements, targeted update messaging, and rollout hardening."
-      ]
-    },
-    {
-      "version": "0.3.1",
-      "date": null,
-      "git_head": null,
-      "notes": [
-        "Added installer and launcher log scrolling improvements.",
-        "Fixed the Basalt run-loop crash path in the config editor release."
-      ]
-    },
-    {
-      "version": "0.3.2",
-      "date": null,
-      "git_head": null,
-      "notes": [
-        "Hardened raw fetches with cache-busting and canonical GitHub raw URLs.",
-        "Fixed controller HUD startup issues and updater fetch consistency."
-      ]
-    },
-    {
-      "version": "0.3.3",
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Added force-update support for CLI and controller-driven rollouts.",
-        "Added terminal log hotkeys and controller monitor/view hotkey documentation.",
-        "Added controller terminal alert rotation and release helper tooling."
-      ]
-    },
-    {
-      "version": "0.3.4",
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Moved maintenance/update commands into a dedicated enmon-cli.lua entrypoint.",
-        "Kept enmon.lua as the runtime launcher with compatibility forwarding for legacy CLI usage."
-      ]
-    },
-    {
-      "version": "0.3.5",
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Refined runtime update UX and controller update presentation",
-        "Added runtime F2 config editing and installer/setup support for update-check interval"
-      ]
-    },
-    {
-      "version": "0.3.6",
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Hotfix missing lib/runtime_actions.lua in the release manifest",
-        "Restored normal updater recovery for nodes that received the broken 0.3.5 payload"
-      ]
-    },
-    {
-      "version": "0.3.7",
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fixed controller update HUD crash caused by missing action_state initialization",
-        "Require controller review/update before normal remote node rollout and make F9 a review-then-apply local update flow"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add config schema migrations and installer config reuse flow",
-        "Add manifest SHA-256 hashes for true delta updates and hash-based verify",
-        "Prune stale files and block mixed-version operational traffic under controller-first rollout"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "manifest_revision": 1,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add manifest_revision support so same-version hotfixes can be detected normally",
-        "Use composed release labels for hash-based update checks and cache-busting",
-        "Document same-version hotfix publishing via manifest revision"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "manifest_revision": 2,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Merge controller runtime update fields into one compact Updates row",
-        "Add manifest_revision support so same-version hotfixes can be detected normally",
-        "Use composed release labels for hash-based update checks and cache-busting"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "manifest_revision": 3,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Harden update auth with node-bound HMAC v2 and constant-time verification",
-        "Persist node update offer/in-progress state and require configured controller_id for remote update control",
-        "Make updater activation more crash-resilient with backups and stricter sentinel recovery"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "manifest_revision": 4,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Adoption-based onboarding flow",
-        "Development branch test release"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "manifest_revision": 5,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add branch-selecting bootstrap installer",
-        "Show active branch in runtime TUI"
-      ]
-    },
-    {
-      "version": "0.3.8",
-      "manifest_revision": 6,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Move branch tracking out of manifest.json",
-        "Store selected branch in enmon-source.json"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 0,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add branch-selecting bootstrap installer and full installer handoff",
-        "Store branch selection locally in enmon-source.json",
-        "Show active branch in runtime UI and CLI"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 1,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fix missing controller_link module in managed installs"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 2,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Use real local wall-clock timestamps in HUDs"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 3,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add explicit modem selection for multi-modem nodes"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 4,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Auto-select the single ender modem during setup and install",
-        "Hide modem selection in the config editor when detection is unambiguous"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 5,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fix missing peripheral manager import in the full installer"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 6,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Make the full installer self-contained before managed files are downloaded"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 7,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Remap runtime config hotkey from F2 to C to avoid Minecraft screenshot conflicts"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 8,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fix wrapped modem transmit calls so node discovery and telemetry actually send"
-      ]
-    },
-    {
-      "version": "0.3.9",
-      "manifest_revision": 9,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Use deterministic v2 auth tags so adopted node telemetry and update checks survive restarts"
-      ]
-    },
-    {
-      "version": "0.3.10",
-      "manifest_revision": 0,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add controller-authored history graphs for controller monitor, display node, and pocket tabs",
-        "Expand reactor telemetry and controls with temperatures, rod state, and richer pocket/detail views",
-        "Refactor shared graph/runtime/persistence/controller-view helpers into common modules and switch history persistence to memory-first with disk opt-in",
-        "Restore in-game time displays and normalize induction matrix values to FE-equivalent numbers with configurable FE/RF labels"
-      ]
-    },
-    {
-      "version": "0.4.0",
-      "manifest_revision": 0,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Add controller-authored history graphs for controller monitor, display node, and pocket tabs",
-        "Expand reactor telemetry and controls with temperatures, rod state, and richer pocket/detail views",
-        "Normalize induction matrix values to FE-equivalent numbers and add configurable FE/RF display labels",
-        "Switch history persistence to memory-first with disk opt-in and restore in-game time displays",
-        "Refactor shared graph/runtime/persistence helpers and split role logic into nodes/<role>/ subfolders"
-      ]
-    },
-    {
-      "version": "0.4.0",
-      "manifest_revision": 1,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fix stale managed-file hashes so 0.3.9 nodes can update cleanly to the 0.4.0 release train",
-        "Wrap runtime activity log messages instead of truncating them to a single row",
-        "Align tools/bump-version.ps1 hash normalization with the updater so future manifests match runtime verification"
-      ]
-    },
-    {
-      "version": "0.4.0",
-      "manifest_revision": 2,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fix the controller disk-persistence Y/N prompt so typed answers are accepted reliably after update and reboot"
-      ]
-    },
-    {
-      "version": "0.4.0",
-      "manifest_revision": 3,
-      "date": "2026-04-12",
-      "git_head": null,
-      "notes": [
-        "Fix controller and display HUD startup crashes caused by stale renderHistoryLine call sites"
-      ]
-    },
-    {
-      "version": "0.4.0",
-      "manifest_revision": 4,
-      "date": "2026-04-13",
-      "git_head": null,
-      "notes": [
-        "Replace sparkline history with vertical bar graphs and clearer matrix summaries",
-        "Split reactor/status readouts into more readable multi-line HUD layouts across controller, display, and pocket views"
-      ]
-    }
-  ]
+    "entries":  [
+                    {
+                        "version":  "0.1.0",
+                        "date":  null,
+                        "git_head":  null,
+                        "notes":  [
+                                      "Initial ENMON release with installer/setup flow and core role separation.",
+                                      "Basic controller, matrix, reactor, display, and pocket node support."
+                                  ]
+                    },
+                    {
+                        "version":  "0.2.0",
+                        "date":  null,
+                        "git_head":  null,
+                        "notes":  [
+                                      "Major TUI refresh for installer, config editor, and runtime panels.",
+                                      "Improved peripheral detection and post-install configuration editing."
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.0",
+                        "date":  null,
+                        "git_head":  null,
+                        "notes":  [
+                                      "Introduced controller-coordinated updater flow and shared version metadata.",
+                                      "Added node identity announcements, targeted update messaging, and rollout hardening."
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.1",
+                        "date":  null,
+                        "git_head":  null,
+                        "notes":  [
+                                      "Added installer and launcher log scrolling improvements.",
+                                      "Fixed the Basalt run-loop crash path in the config editor release."
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.2",
+                        "date":  null,
+                        "git_head":  null,
+                        "notes":  [
+                                      "Hardened raw fetches with cache-busting and canonical GitHub raw URLs.",
+                                      "Fixed controller HUD startup issues and updater fetch consistency."
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.3",
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Added force-update support for CLI and controller-driven rollouts.",
+                                      "Added terminal log hotkeys and controller monitor/view hotkey documentation.",
+                                      "Added controller terminal alert rotation and release helper tooling."
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.4",
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Moved maintenance/update commands into a dedicated enmon-cli.lua entrypoint.",
+                                      "Kept enmon.lua as the runtime launcher with compatibility forwarding for legacy CLI usage."
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.5",
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Refined runtime update UX and controller update presentation",
+                                      "Added runtime F2 config editing and installer/setup support for update-check interval"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.6",
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Hotfix missing lib/runtime_actions.lua in the release manifest",
+                                      "Restored normal updater recovery for nodes that received the broken 0.3.5 payload"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.7",
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fixed controller update HUD crash caused by missing action_state initialization",
+                                      "Require controller review/update before normal remote node rollout and make F9 a review-then-apply local update flow"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add config schema migrations and installer config reuse flow",
+                                      "Add manifest SHA-256 hashes for true delta updates and hash-based verify",
+                                      "Prune stale files and block mixed-version operational traffic under controller-first rollout"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "manifest_revision":  1,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add manifest_revision support so same-version hotfixes can be detected normally",
+                                      "Use composed release labels for hash-based update checks and cache-busting",
+                                      "Document same-version hotfix publishing via manifest revision"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "manifest_revision":  2,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Merge controller runtime update fields into one compact Updates row",
+                                      "Add manifest_revision support so same-version hotfixes can be detected normally",
+                                      "Use composed release labels for hash-based update checks and cache-busting"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "manifest_revision":  3,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Harden update auth with node-bound HMAC v2 and constant-time verification",
+                                      "Persist node update offer/in-progress state and require configured controller_id for remote update control",
+                                      "Make updater activation more crash-resilient with backups and stricter sentinel recovery"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "manifest_revision":  4,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Adoption-based onboarding flow",
+                                      "Development branch test release"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "manifest_revision":  5,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add branch-selecting bootstrap installer",
+                                      "Show active branch in runtime TUI"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.8",
+                        "manifest_revision":  6,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Move branch tracking out of manifest.json",
+                                      "Store selected branch in enmon-source.json"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  0,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add branch-selecting bootstrap installer and full installer handoff",
+                                      "Store branch selection locally in enmon-source.json",
+                                      "Show active branch in runtime UI and CLI"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  1,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fix missing controller_link module in managed installs"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  2,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Use real local wall-clock timestamps in HUDs"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  3,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add explicit modem selection for multi-modem nodes"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  4,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Auto-select the single ender modem during setup and install",
+                                      "Hide modem selection in the config editor when detection is unambiguous"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  5,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fix missing peripheral manager import in the full installer"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  6,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Make the full installer self-contained before managed files are downloaded"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  7,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Remap runtime config hotkey from F2 to C to avoid Minecraft screenshot conflicts"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  8,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fix wrapped modem transmit calls so node discovery and telemetry actually send"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.9",
+                        "manifest_revision":  9,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Use deterministic v2 auth tags so adopted node telemetry and update checks survive restarts"
+                                  ]
+                    },
+                    {
+                        "version":  "0.3.10",
+                        "manifest_revision":  0,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add controller-authored history graphs for controller monitor, display node, and pocket tabs",
+                                      "Expand reactor telemetry and controls with temperatures, rod state, and richer pocket/detail views",
+                                      "Refactor shared graph/runtime/persistence/controller-view helpers into common modules and switch history persistence to memory-first with disk opt-in",
+                                      "Restore in-game time displays and normalize induction matrix values to FE-equivalent numbers with configurable FE/RF labels"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  0,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Add controller-authored history graphs for controller monitor, display node, and pocket tabs",
+                                      "Expand reactor telemetry and controls with temperatures, rod state, and richer pocket/detail views",
+                                      "Normalize induction matrix values to FE-equivalent numbers and add configurable FE/RF display labels",
+                                      "Switch history persistence to memory-first with disk opt-in and restore in-game time displays",
+                                      "Refactor shared graph/runtime/persistence helpers and split role logic into nodes/\u003crole\u003e/ subfolders"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  1,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fix stale managed-file hashes so 0.3.9 nodes can update cleanly to the 0.4.0 release train",
+                                      "Wrap runtime activity log messages instead of truncating them to a single row",
+                                      "Align tools/bump-version.ps1 hash normalization with the updater so future manifests match runtime verification"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  2,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fix the controller disk-persistence Y/N prompt so typed answers are accepted reliably after update and reboot"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  3,
+                        "date":  "2026-04-12",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Fix controller and display HUD startup crashes caused by stale renderHistoryLine call sites"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  4,
+                        "date":  "2026-04-13",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Replace sparkline history with vertical bar graphs and clearer matrix summaries",
+                                      "Split reactor/status readouts into more readable multi-line HUD layouts across controller, display, and pocket views"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  5,
+                        "date":  "2026-08-05",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Audit roadmap: adoption security, updater rollback, installer hashes, ETA and multi-matrix, pocket/HUD fixes"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  6,
+                        "date":  "2026-08-05",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Wave 6: meter and generator node roles (Energy Meter / IE diesel), HUD IO strip",
+                                      "Pocket remote ON/OFF and reactor rod control via authenticated POCKET_CMD",
+                                      "Controller alert redstone side and optional Discord webhook; Powah skipped (no CC API)"
+                                  ]
+                    },
+                    {
+                        "version":  "0.4.0",
+                        "manifest_revision":  7,
+                        "date":  "2026-08-06",
+                        "git_head":  null,
+                        "notes":  [
+                                      "Install UX overhaul: unified chrome, soft peripheral pickers, claim-code handoff, missing-config rescue, editable role with managed-file resync, schema v9 bound_peripheral",
+                                      "Remove orphaned ui/setup.lua; add lib/role_requirements.lua"
+                                  ]
+                    }
+                ]
 }

@@ -178,6 +178,11 @@ local function pageSelection(delta)
 end
 
 local function ensureReactorEntry(nid, row)
+    local max_row = (_monitor_h or 0) - 1
+    if row + 2 > max_row then
+        return nil
+    end
+
     local entry = _overview.reactor_entries[nid]
     if entry then
         entry.label:setPosition(_overview.rx_x, row)
@@ -232,8 +237,49 @@ local function ensureReactorEntry(nid, row)
     return entry
 end
 
+local function ensureGeneratorEntry(nid, row)
+    local max_row = (_monitor_h or 0) - 1
+    if row + 2 > max_row then
+        return nil
+    end
+
+    _overview.generator_entries = _overview.generator_entries or {}
+    local entry = _overview.generator_entries[nid]
+    if entry then
+        entry.label:setPosition(_overview.rx_x, row)
+        entry.detail:setPosition(_overview.rx_x, row + 1)
+        entry.btn:setPosition(_overview.rx_x, row + 2)
+        return entry
+    end
+
+    entry = {}
+    entry.label = _overview.frame:addLabel()
+        :setPosition(_overview.rx_x, row):setSize(_overview.rx_w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.label)
+        :setText(nid .. ": --")
+
+    entry.detail = _overview.frame:addLabel()
+        :setPosition(_overview.rx_x, row + 1):setSize(_overview.rx_w, 1)
+        :setBackground(COLORS.bg):setForeground(COLORS.muted)
+        :setText("")
+
+    entry.btn = _overview.frame:addButton()
+        :setPosition(_overview.rx_x, row + 2):setSize(6, 1)
+        :setText(" ON  "):setBackground(COLORS.btn_off):setForeground(COLORS.btn_fg)
+        :onClick(function()
+            if _ctrl then
+                local generator = _data.generators and _data.generators[nid]
+                local want = not (generator and generator.active)
+                _ctrl.setGeneratorActive(nid, want)
+            end
+        end)
+
+    _overview.generator_entries[nid] = entry
+    return entry
+end
+
 local function buildOverview(frame, w, h)
-    local e = { reactor_entries = {} }
+    local e = { reactor_entries = {}, generator_entries = {} }
     local frame_h = h - 2
     e.frame = frame:addFrame():setPosition(1, 3):setSize(w, frame_h):setBackground(COLORS.bg)
     local localFrame = e.frame
@@ -288,12 +334,16 @@ local function buildOverview(frame, w, h)
             :setPosition(2, py + 11):setSize(lw, 1):setBackground(COLORS.bg)
             :setForeground(COLORS.muted):setText("In --  Out --")
 
+        e.meter_io_lbl = localFrame:addLabel()
+            :setPosition(2, py + 12):setSize(lw, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.value):setText("IO --")
+
         e.hist_graph_w = math.max(8, lw - 2)
         e.hist_graph_h = 3
 
         e.rx_title = localFrame:addLabel()
             :setPosition(rx, py):setSize(w - rx, 1):setBackground(COLORS.bg)
-            :setForeground(colors.yellow):setText("[ Reactors ]")
+            :setForeground(colors.yellow):setText("[ Reactors / Gens ]")
 
         e.rx_x = rx
         e.rx_w = w - rx
@@ -326,12 +376,16 @@ local function buildOverview(frame, w, h)
             :setPosition(1, py + 5):setSize(w, 1):setBackground(COLORS.bg)
             :setForeground(COLORS.muted):setText("In --  Out --")
 
+        e.meter_io_lbl = localFrame:addLabel()
+            :setPosition(1, py + 6):setSize(w, 1):setBackground(COLORS.bg)
+            :setForeground(COLORS.value):setText("IO --")
+
         e.hist_graph_w = math.max(6, w)
         e.hist_graph_h = 2
 
         e.rx_title = localFrame:addLabel()
-            :setPosition(1, py + 7):setSize(w, 1):setBackground(COLORS.bg)
-            :setForeground(colors.yellow):setText("[Reactors]")
+            :setPosition(1, py + 8):setSize(w, 1):setBackground(COLORS.bg)
+            :setForeground(colors.yellow):setText("[Reactors/Gens]")
 
         e.rx_x = 1
         e.rx_w = w
@@ -453,8 +507,10 @@ local function renderOverview(data)
         if e.mat_max_val then e.mat_max_val:setText(util.formatEnergy(matrix.max_energy, energy_unit)) end
         if e.mat_in_val then e.mat_in_val:setText("+" .. util.formatRate(matrix.last_input, energy_unit)) end
         if e.mat_out_val then e.mat_out_val:setText("-" .. util.formatRate(matrix.last_output, energy_unit)) end
-        e.mat_fill_summary:setText("Fill " .. util.formatPercent(fill) .. "  Recent " .. select(2, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2)))
-        e.mat_output_summary:setText(truncate("In +" .. util.formatRate(matrix.last_input, energy_unit) .. "  Out -" .. util.formatRate(matrix.last_output, energy_unit), e.wide and (e.hist_graph_w or e.rx_w) or e.rx_w))
+        e.mat_fill_summary:setText("Fill " .. util.formatPercent(fill) .. "  " .. tostring(data.matrix_eta or "ETA --") .. "  Recent " .. select(2, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2)))
+        local matrix_count = tonumber(data.matrix_count) or 0
+        local count_prefix = matrix_count > 1 and (tostring(matrix_count) .. "x ") or ""
+        e.mat_output_summary:setText(truncate(count_prefix .. "In +" .. util.formatRate(matrix.last_input, energy_unit) .. "  Out -" .. util.formatRate(matrix.last_output, energy_unit), e.wide and (e.hist_graph_w or e.rx_w) or e.rx_w))
         local fill_rows = select(1, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2))
         setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or e.rx_w, barColor(fill))
     else
@@ -468,35 +524,82 @@ local function renderOverview(data)
         setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or e.rx_w, COLORS.muted)
     end
 
-    local row = e.wide and 2 or 9
+    if e.meter_io_lbl then
+        local meter_io = data.meter_io
+        if meter_io and not data.meter_stale then
+            local count = tonumber(data.meter_count) or tonumber(meter_io.meter_count) or 0
+            local prefix = count > 1 and (tostring(count) .. "x IO ") or "IO "
+            e.meter_io_lbl:setText(truncate(
+                prefix .. util.formatRate(meter_io.rate or 0, energy_unit) ..
+                "  +" .. util.formatRate(meter_io.last_input or 0, energy_unit) ..
+                " / -" .. util.formatRate(meter_io.last_output or 0, energy_unit),
+                e.wide and (e.hist_graph_w or e.rx_w) or e.rx_w
+            ))
+            e.meter_io_lbl:setForeground(COLORS.value)
+        else
+            e.meter_io_lbl:setText("IO --")
+            e.meter_io_lbl:setForeground(COLORS.muted)
+        end
+    end
+
+    local row = e.wide and 2 or 10
     for nid, reactor in pairs(data.reactors or {}) do
         local entry = ensureReactorEntry(nid, row)
-        local stale = (os.clock() - (reactor.updated or 0)) > 10
-        if stale then
-            entry.label:setText(truncate(tostring(nid) .. "  OFFLINE", e.rx_w))
-            entry.detail:setText("Awaiting telemetry")
-            entry.label:setForeground(COLORS.alert_fg)
-            entry.detail:setForeground(COLORS.muted)
-        else
-            local line_one, line_two = graph.reactorOverviewLines(nid, reactor, energy_unit)
-            entry.label:setText(truncate(line_one, e.rx_w))
-            entry.detail:setText(truncate(line_two, e.rx_w))
-            entry.label:setForeground(reactorStatusColor(reactor.active))
-            entry.detail:setForeground(COLORS.muted)
+        if entry then
+            local stale = (os.clock() - (reactor.updated or 0)) > 10
+            if stale then
+                entry.label:setText(truncate(tostring(nid) .. "  OFFLINE", e.rx_w))
+                entry.detail:setText("Awaiting telemetry")
+                entry.label:setForeground(COLORS.alert_fg)
+                entry.detail:setForeground(COLORS.muted)
+            else
+                local line_one, line_two = graph.reactorOverviewLines(nid, reactor, energy_unit)
+                entry.label:setText(truncate(line_one, e.rx_w))
+                entry.detail:setText(truncate(line_two, e.rx_w))
+                entry.label:setForeground(reactorStatusColor(reactor.active))
+                entry.detail:setForeground(COLORS.muted)
+            end
+            if reactor.active then
+                entry.btn:setText(" OFF "):setBackground(COLORS.btn_on)
+            else
+                entry.btn:setText(" ON  "):setBackground(COLORS.btn_off)
+            end
+            if reactor.control_rod_level ~= nil then
+                entry.rod_down:setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
+                entry.rod_up:setBackground(COLORS.action_bg):setForeground(COLORS.btn_fg)
+            else
+                entry.rod_down:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
+                entry.rod_up:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
+            end
+            row = row + 3
         end
-        if reactor.active then
-            entry.btn:setText(" OFF "):setBackground(COLORS.btn_on)
-        else
-            entry.btn:setText(" ON  "):setBackground(COLORS.btn_off)
+    end
+
+    for nid, generator in pairs(data.generators or {}) do
+        local entry = ensureGeneratorEntry(nid, row)
+        if entry then
+            local stale = (os.clock() - (generator.updated or 0)) > 10
+            if stale then
+                entry.label:setText(truncate("G " .. tostring(nid) .. "  OFFLINE", e.rx_w))
+                entry.detail:setText("Awaiting telemetry")
+                entry.label:setForeground(COLORS.alert_fg)
+                entry.detail:setForeground(COLORS.muted)
+            else
+                local status = generator.active and "ON" or "OFF"
+                entry.label:setText(truncate("G " .. tostring(nid) .. "  " .. status, e.rx_w))
+                entry.detail:setText(truncate(util.formatRate(generator.produced_last_t or 0, energy_unit), e.rx_w))
+                entry.label:setForeground(reactorStatusColor(generator.active))
+                entry.detail:setForeground(COLORS.muted)
+            end
+            if generator.controllable == false then
+                entry.btn:setText("  -- "):setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
+            elseif generator.active then
+                entry.btn:setText(" OFF "):setBackground(COLORS.btn_on)
+            else
+                entry.btn:setText(" ON  "):setBackground(COLORS.btn_off)
+            end
+            row = row + 3
         end
-        if reactor.control_rod_level ~= nil then
-            entry.rod_down:setBackground(COLORS.neutral_bg):setForeground(COLORS.btn_fg)
-            entry.rod_up:setBackground(COLORS.action_bg):setForeground(COLORS.btn_fg)
-        else
-            entry.rod_down:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
-            entry.rod_up:setBackground(COLORS.neutral_bg):setForeground(COLORS.muted)
-        end
-        row = row + 3
     end
 
     if e.thresh_lbl then
@@ -552,7 +655,7 @@ renderUpdates = function(data)
     local offer_enabled = not selected_is_controller
     local start_enabled = (snapshot.offer ~= nil) and not selected_is_controller
     local abort_enabled = snapshot.offer ~= nil or snapshot.rollout ~= nil
-    local adopt_enabled = selected ~= nil and selected.status == "unlinked"
+    local adopt_enabled = selected ~= nil and (selected.status == "unlinked" or selected.status == "identity-conflict")
 
     e.action_state.offer = offer_enabled
     e.action_state.start = start_enabled
@@ -563,7 +666,7 @@ renderUpdates = function(data)
     applyActionButton(e.offer_btn, offer_enabled, COLORS.action_bg, COLORS.btn_fg, selected_is_controller and " Local " or " Offer ")
     applyActionButton(e.start_btn, start_enabled, colors.green, COLORS.btn_fg, selected_is_controller and " CLI  " or " Start ")
     applyActionButton(e.abort_btn, abort_enabled, colors.red, COLORS.btn_fg, " Abort ")
-    applyActionButton(e.adopt_btn, adopt_enabled, COLORS.neutral_bg, COLORS.btn_fg, " Adopt ")
+    applyActionButton(e.adopt_btn, adopt_enabled, COLORS.neutral_bg, COLORS.btn_fg, selected and selected.status == "identity-conflict" and "Replace" or " Adopt ")
 
     local rows = {{ node_id = nil, role = "scope", local_version = snapshot.latest_version or "--", version_display = snapshot.latest_version or "--", status = "all-eligible", note = "Operate on all eligible nodes" }}
     for _, node in ipairs(snapshot.nodes or {}) do
@@ -607,9 +710,12 @@ function hud.init(mon_side, cfg, ctrl_node)
     _cfg = cfg
     _ctrl = ctrl_node
 
-    local monitor = peripheral.wrap(mon_side)
-    if not monitor then
-        error("[hud] Monitor not found on side: " .. tostring(mon_side))
+    local monitor = nil
+    while true do
+        monitor = peripheral.wrap(mon_side)
+        if monitor then break end
+        print("[hud] Waiting for monitor on side: " .. tostring(mon_side))
+        os.sleep(1)
     end
 
     monitor.setTextScale(0.5)

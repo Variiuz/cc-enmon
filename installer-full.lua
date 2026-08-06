@@ -69,8 +69,8 @@ local function composeReleaseLabel(baseVersion, manifestRevision)
     return tostring(baseVersion)
 end
 
-local VERSION    = composeReleaseLabel("0.4.0", 4)
-local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/development/"
+local VERSION    = composeReleaseLabel("0.4.0", 7)
+local DEFAULT_BASE_URL = "https://raw.githubusercontent.com/Variiuz/cc-enmon/master/"
 local SOURCE_PATH = "enmon-source.json"
 local BASALT_URL = "https://raw.githubusercontent.com/Pyroxenium/Basalt2/main/release/basalt-core.lua"
 
@@ -97,14 +97,24 @@ local INSTALL_BRANCH = tostring(args[1] or branchFromBaseUrl(DEFAULT_BASE_URL))
 local BASE_URL   = branchToBaseUrl(INSTALL_BRANCH)
 local MANIFEST   = BASE_URL .. "manifest.json"
 
+-- Keep ROLE_* tables in sync with lib/role_requirements.lua.
 local ROLE_LABELS = {
     controller = "Controller  (monitor + modem + optional speaker)",
     matrix     = "Matrix Node (induction port + ender modem)",
     reactor    = "Reactor Node (reactor port + ender modem)",
+    meter      = "Meter Node (energy meter / IE transformer + modem)",
+    generator  = "Generator Node (IE diesel / capacitor + modem)",
     display    = "Display Node (monitor + ender modem)",
     pocket     = "Pocket Computer (ender modem only)",
 }
-local ROLE_ORDER = {"controller", "matrix", "reactor", "display", "pocket"}
+local ROLE_ORDER = {"controller", "matrix", "reactor", "meter", "generator", "display", "pocket"}
+
+local BIND_ROLES = {
+    matrix = true,
+    reactor = true,
+    meter = true,
+    generator = true,
+}
 
 local ROLE_REQUIREMENTS = {
     controller = {
@@ -115,13 +125,21 @@ local ROLE_REQUIREMENTS = {
     matrix = {
         { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
         { types = {"mekanism:induction_port", "inductionPort",
-                   "mekanism.induction_port"},           label = "Induction Port",  required = true },
+                   "mekanism.induction_port"},           label = "Induction Port",  required = true, bind = true },
     },
     reactor = {
         { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
         { types = {"BigReactors-Reactor",
                    "bigger_reactors:reactor_access_port",
-                   "bigreactors:reactor_access_port"},   label = "Reactor Port",    required = true },
+                   "bigreactors:reactor_access_port"},   label = "Reactor Port",    required = true, bind = true },
+    },
+    meter = {
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
+        { types = {"energymeter", "current_transformer", "ie_current_transformer"}, label = "Energy meter / transformer", required = true, bind = true },
+    },
+    generator = {
+        { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
+        { types = {"diesel_generator", "ie_diesel_generator", "capacitor_lv", "capacitor_mv", "capacitor_hv"}, label = "IE diesel / capacitor", required = true, bind = true },
     },
     display = {
         { types = {"ender_modem", "modem"},            label = "Ender modem",     required = true },
@@ -132,11 +150,12 @@ local ROLE_REQUIREMENTS = {
     },
 }
 
+-- Match ui/config_editor.lua COLORS semantics.
 local STYLE = {
     root_bg      = colors.lightGray,
     root_fg      = colors.black,
-    title_bg     = colors.gray,
-    title_fg     = colors.white,
+    header_bg    = colors.gray,
+    header_fg    = colors.white,
     section_bg   = colors.lime,
     section_fg   = colors.black,
     label_fg     = colors.gray,
@@ -149,7 +168,7 @@ local STYLE = {
     highlight_fg = colors.white,
     back_bg      = colors.lightBlue,
     next_bg      = colors.blue,
-    install_bg   = colors.green,
+    install_bg   = colors.lime,
     exit_bg      = colors.red,
     button_fg    = colors.black,
     ok_fg        = colors.lime,
@@ -290,9 +309,9 @@ local function drawChrome(section)
     ROOT.setBackgroundColor(STYLE.root_bg)
     ROOT.setTextColor(STYLE.root_fg)
     ROOT.clear()
-    fillLine(ROOT, 1, STYLE.title_bg, STYLE.title_fg)
-    centerText(ROOT, 1, "ENMON Installer [" .. tostring(INSTALL_BRANCH) .. "]", STYLE.title_fg, STYLE.title_bg)
-    writeAt(ROOT, math.max(2, w - #("v" .. VERSION)), 1, "v" .. VERSION, STYLE.title_fg, STYLE.title_bg)
+    fillLine(ROOT, 1, STYLE.header_bg, STYLE.header_fg)
+    centerText(ROOT, 1, "ENMON Installer [" .. tostring(INSTALL_BRANCH) .. "]", STYLE.header_fg, STYLE.header_bg)
+    writeAt(ROOT, math.max(2, w - #("v" .. VERSION)), 1, "v" .. VERSION, STYLE.header_fg, STYLE.header_bg)
     fillLine(ROOT, 2, STYLE.section_bg, STYLE.section_fg)
     writeAt(ROOT, 2, 2, section, STYLE.section_fg, STYLE.section_bg)
     fillLine(ROOT, h - 1, STYLE.root_bg, STYLE.hint_fg)
@@ -380,6 +399,7 @@ local function chooseFromList(section, intro, items, selected, canBack)
         local row = 1
         row = writeParagraph(win, row, intro, STYLE.root_fg)
         row = row + 1
+        local list_start = row
 
         for i, item in ipairs(items) do
             local isSelected = i == selected
@@ -394,7 +414,11 @@ local function chooseFromList(section, intro, items, selected, canBack)
             and "Up/down: select   Enter/right: confirm   Backspace/left: back   Q: exit"
             or "Up/down: select   Enter/right: confirm   Q: exit"
         drawHint(hint)
-        drawNav(canBack, "Select", STYLE.next_bg)
+        local left, right = drawNav(canBack, "Select", STYLE.next_bg)
+
+        local function inRegion(region, x, y)
+            return region and y == region.y and x >= region.x and x < (region.x + region.w)
+        end
 
         local event, a, b, c = os.pullEvent()
         if event == "key" then
@@ -421,21 +445,16 @@ local function chooseFromList(section, intro, items, selected, canBack)
                 selected = idx
             end
         elseif event == "mouse_click" then
-            local w, h = ROOT.getSize()
-            if c == h then
-                local leftText = canBack and (" " .. string.char(27) .. " Back ") or " Exit "
-                local left = { x = 2, y = h, w = #leftText }
-                local rightText = " Select " .. string.char(26) .. " "
-                local right = { x = math.max(left.x + left.w + 2, w - #rightText + 1), y = h, w = #rightText }
-                if c == left.y and b >= left.x and b < left.x + left.w then
-                    return nil, canBack and "back" or "cancel"
-                elseif c == right.y and b >= right.x and b < right.x + right.w then
-                    return selected, "forward"
-                end
+            if inRegion(left, b, c) then
+                return nil, canBack and "back" or "cancel"
+            elseif inRegion(right, b, c) then
+                return selected, "forward"
             else
-                local listRow = c - 4
-                if listRow >= 3 and items[listRow - 2] then
-                    selected = listRow - 2
+                -- Content window starts at ROOT (2,4); convert absolute click to content row.
+                local contentY = c - 3
+                local itemIndex = contentY - list_start + 1
+                if items[itemIndex] then
+                    selected = itemIndex
                 end
             end
         end
@@ -655,22 +674,6 @@ local function describeModem(name)
     return tostring(name) .. " (modem)"
 end
 
-local function resolveAutoModemSide(cfg)
-    if type(cfg.modem_side) == "string" and cfg.modem_side ~= "" then
-        local peripheralRef = wrapPeripheral(cfg.modem_side)
-        if peripheralRef and isWirelessModem(peripheralRef) == true then
-            return cfg.modem_side, "saved"
-        end
-    end
-
-    local wireless = listWirelessModems()
-    if #wireless == 1 then
-        return wireless[1], "detected"
-    end
-
-    return nil, (#wireless > 1) and "multiple" or "missing"
-end
-
 local function findMatchingNames(types)
     local found = {}
     for _, name in ipairs(peripheral.getNames()) do
@@ -692,12 +695,28 @@ sanitizeRoleConfig = function(cfg)
         cfg.threshold_low = nil
         cfg.threshold_high = nil
         cfg.update_check_interval = nil
+        cfg.alert_redstone_side = nil
+        cfg.alert_webhook_url = nil
+        cfg.history_persistence_mode = nil
+        cfg.energy_unit = nil
     else
         cfg.controller_id = nil
+        cfg.controller_token = nil
     end
     if cfg.role ~= "controller" and cfg.role ~= "display" then
         cfg.monitor_side = nil
     end
+    if not BIND_ROLES[cfg.role] then
+        cfg.bound_peripheral = nil
+    end
+end
+
+local function getBindRequirement(role)
+    local reqs = ROLE_REQUIREMENTS[role] or {}
+    for _, req in ipairs(reqs) do
+        if req.bind then return req end
+    end
+    return nil
 end
 
 -- Wizard pages ---------------------------------------------------------------
@@ -705,9 +724,9 @@ end
 local function pageWelcome(cfg, state)
     local win = drawChrome("Welcome")
     local row = 1
-    row = writeParagraph(win, row, "Install or refresh ENMON on this computer. The wizard now supports reusing an existing configuration as a starting point, then reviewing each section before files are downloaded.", STYLE.root_fg)
+    row = writeParagraph(win, row, "Install or refresh ENMON on this computer. Reuse an existing configuration when present, then review each section before files are downloaded.", STYLE.root_fg)
     row = row + 1
-    row = writeParagraph(win, row, "Flow: welcome, role, hardware check, network identity, role-specific settings, final review, then download and write files.", STYLE.hint_fg)
+    row = writeParagraph(win, row, "Flow: welcome, role, peripheral check, optional pickers, network identity, role settings, review, download.", STYLE.hint_fg)
     row = row + 1
 
     if state.existing_cfg then
@@ -757,15 +776,25 @@ local function pageRole(cfg)
     for _, role in ipairs(ROLE_ORDER) do
         labels[#labels + 1] = ROLE_LABELS[role]
     end
+    local previous = cfg.role
     local idx, action = chooseFromList(
         "Role Selection",
         "Choose the role for this computer. Use up/down arrows to move the selection and press Enter to confirm.",
         labels,
         roleIndex(cfg.role) or 1,
-        false
+        true
     )
     if action ~= "forward" then return action end
     cfg.role = ROLE_ORDER[idx]
+    if previous ~= cfg.role then
+        if previous and BIND_ROLES[previous] then
+            cfg.bound_peripheral = nil
+        end
+        if cfg.role == "controller" or (previous and previous ~= "controller") then
+            cfg.controller_id = nil
+            cfg.controller_token = nil
+        end
+    end
     sanitizeRoleConfig(cfg)
     return "forward"
 end
@@ -803,6 +832,72 @@ local function pagePeripherals(cfg)
     end
 
     return waitNav(true, any_missing and "Continue" or "Next", STYLE.next_bg)
+end
+
+local function pageDevicePeripheral(cfg)
+    local req = getBindRequirement(cfg.role)
+    if not req then
+        cfg.bound_peripheral = nil
+        return "forward"
+    end
+
+    local found = findMatchingNames(req.types)
+    if #found <= 1 then
+        if #found == 1 then
+            cfg.bound_peripheral = found[1]
+        end
+        return "forward"
+    end
+
+    local labels = {}
+    local selected = 1
+    for i, name in ipairs(found) do
+        labels[#labels + 1] = name .. " (" .. tostring(peripheral.getType(name) or "?") .. ")"
+        if cfg.bound_peripheral == name then
+            selected = i
+        end
+    end
+
+    local idx, action = chooseFromList(
+        "Device Peripheral",
+        "Multiple " .. tostring(req.label) .. " peripherals were found. Pick which one this node should bind to.",
+        labels,
+        selected,
+        true
+    )
+    if action ~= "forward" then return action end
+    cfg.bound_peripheral = found[idx]
+    return "forward"
+end
+
+local function pageModemPicker(cfg)
+    local wireless = listWirelessModems()
+    if #wireless <= 1 then
+        if #wireless == 1 then
+            cfg.modem_side = wireless[1]
+        end
+        return "forward"
+    end
+
+    local labels = {}
+    local selected = 1
+    for i, name in ipairs(wireless) do
+        labels[#labels + 1] = describeModem(name)
+        if cfg.modem_side == name then
+            selected = i
+        end
+    end
+
+    local idx, action = chooseFromList(
+        "Modem Selection",
+        "Multiple wireless-class modems were detected. Pick the ender modem ENMON should use.",
+        labels,
+        selected,
+        true
+    )
+    if action ~= "forward" then return action end
+    cfg.modem_side = wireless[idx]
+    return "forward"
 end
 
 local function pageIdentity(cfg)
@@ -886,6 +981,8 @@ local function pageHardware(cfg)
         local speakers = listPeripheralsOfType("speaker")
         local monitorDefault = cfg.monitor_side or monitors[1] or "top"
         local speakerDefault = cfg.speaker_side or speakers[1] or ""
+        local rsDefault = cfg.alert_redstone_side or ""
+        local webhookDefault = cfg.alert_webhook_url or ""
 
         row = writeParagraph(win, row, "Choose which attached peripherals ENMON should use on this node.", STYLE.root_fg)
         row = row + 1
@@ -903,15 +1000,21 @@ local function pageHardware(cfg)
         end
         row = row + 1
 
-        drawHint("Leave the speaker box blank to disable speaker alerts.")
+        drawHint("Leave speaker / alert fields blank to disable those channels.")
         drawNav(true, "Next", STYLE.next_bg)
 
         local monitor = trim(inputField(win, row, "Monitor side/name", monitorDefault))
         row = row + 3
 
         local speaker = nil
+        local alert_rs = nil
+        local alert_webhook = nil
         if cfg.role == "controller" then
             speaker = trim(inputField(win, row, "Speaker side/name", speakerDefault, "[blank = none]"))
+            row = row + 3
+            alert_rs = trim(inputField(win, row, "Alert redstone side", rsDefault, "[blank = none]"))
+            row = row + 3
+            alert_webhook = trim(inputField(win, row, "Alert webhook URL", webhookDefault, "[blank = none]"))
         end
 
         if monitor == "" then
@@ -920,20 +1023,34 @@ local function pageHardware(cfg)
             cfg.monitor_side = monitor
             if cfg.role == "controller" then
                 cfg.speaker_side = speaker ~= "" and speaker or nil
+                if alert_rs ~= "" then
+                    local side = string.lower(alert_rs)
+                    local valid = { top = true, bottom = true, left = true, right = true, front = true, back = true }
+                    if not valid[side] then
+                        alert("Hardware Setup", "Alert redstone side must be top/bottom/left/right/front/back.")
+                    else
+                        cfg.alert_redstone_side = side
+                        if alert_webhook ~= "" and not alert_webhook:find("^https?://", 1) then
+                            alert("Hardware Setup", "Webhook URL must start with http:// or https://.")
+                        else
+                            cfg.alert_webhook_url = alert_webhook ~= "" and alert_webhook or nil
+                            return "forward"
+                        end
+                    end
+                else
+                    cfg.alert_redstone_side = nil
+                    if alert_webhook ~= "" and not alert_webhook:find("^https?://", 1) then
+                        alert("Hardware Setup", "Webhook URL must start with http:// or https://.")
+                    else
+                        cfg.alert_webhook_url = alert_webhook ~= "" and alert_webhook or nil
+                        return "forward"
+                    end
+                end
+            else
+                return "forward"
             end
-            return "forward"
         end
     end
-end
-
-local function parseYesNo(value)
-    local normalized = string.lower(trim(value))
-    if normalized == "y" or normalized == "yes" or normalized == "true" or normalized == "1" then
-        return true
-    elseif normalized == "n" or normalized == "no" or normalized == "false" or normalized == "0" then
-        return false
-    end
-    return nil
 end
 
 local function pageAutoControl(cfg)
@@ -983,6 +1100,62 @@ local function pageAutoControl(cfg)
     end
 end
 
+local function pageControllerPrefs(cfg)
+    while true do
+        local unitLabels = { "FE (Forge Energy label)", "RF (Redstone Flux label)" }
+        local unitValues = { "FE", "RF" }
+        local unitSelected = 1
+        if tostring(cfg.energy_unit or "FE"):upper() == "RF" then
+            unitSelected = 2
+        end
+
+        local unitIdx, action = chooseFromList(
+            "Controller Preferences",
+            "Choose the energy unit label shown on controller HUDs. Matrix values stay FE-equivalent internally.",
+            unitLabels,
+            unitSelected,
+            true
+        )
+        if action ~= "forward" then return action end
+        cfg.energy_unit = unitValues[unitIdx]
+
+        local modeLabels = {
+            "Prompt when a disk is detected (recommended)",
+            "Memory only (never use disk)",
+            "Disk enabled (always use disk if present)",
+        }
+        local modeValues = {
+            "prompt_when_disk_detected",
+            "memory_only",
+            "disk_enabled",
+        }
+        local modeSelected = 1
+        local currentMode = cfg.history_persistence_mode or "prompt_when_disk_detected"
+        for i, value in ipairs(modeValues) do
+            if value == currentMode then
+                modeSelected = i
+                break
+            end
+        end
+
+        local modeIdx, modeAction = chooseFromList(
+            "History Persistence",
+            "Choose how the controller stores history graphs.",
+            modeLabels,
+            modeSelected,
+            true
+        )
+        if modeAction == "back" then
+            -- stay in prefs loop to re-pick energy unit
+        elseif modeAction ~= "forward" then
+            return modeAction
+        else
+            cfg.history_persistence_mode = modeValues[modeIdx]
+            return "forward"
+        end
+    end
+end
+
 local function pageUpdateChecks(cfg)
     while true do
         local defaultInterval = tonumber(cfg.update_check_interval) or 90
@@ -1017,7 +1190,10 @@ local function summaryRows(cfg)
         { "Modem", tostring(cfg.modem_side or "auto") },
     }
     if cfg.role ~= "controller" then
-        rows[#rows + 1] = { "Linking", "Adopt into a controller after install" }
+        rows[#rows + 1] = { "Linking", "Adopt via claim code after reboot" }
+    end
+    if cfg.bound_peripheral then
+        rows[#rows + 1] = { "Device", cfg.bound_peripheral }
     end
     if cfg.monitor_side then
         rows[#rows + 1] = { "Monitor", cfg.monitor_side }
@@ -1030,6 +1206,10 @@ local function summaryRows(cfg)
         rows[#rows + 1] = { "Low threshold", tostring(math.floor((cfg.threshold_low or 0.25) * 100 + 0.5)) .. "%" }
         rows[#rows + 1] = { "High threshold", tostring(math.floor((cfg.threshold_high or 0.90) * 100 + 0.5)) .. "%" }
         rows[#rows + 1] = { "Update checks", tostring(cfg.update_check_interval or 90) .. "s" }
+        rows[#rows + 1] = { "Energy unit", tostring(cfg.energy_unit or "FE") }
+        rows[#rows + 1] = { "History", tostring(cfg.history_persistence_mode or "prompt_when_disk_detected") }
+        rows[#rows + 1] = { "Alert redstone", tostring(cfg.alert_redstone_side or "none") }
+        rows[#rows + 1] = { "Alert webhook", cfg.alert_webhook_url and "set" or "none" }
     end
     return rows
 end
@@ -1065,16 +1245,19 @@ local function buildPages(cfg, state)
     end
     pages[#pages + 1] = pageRole
     if cfg.role then
-        local autoModemSide = resolveAutoModemSide(cfg)
+        local wireless = listWirelessModems()
         pages[#pages + 1] = pagePeripherals
+        pages[#pages + 1] = pageDevicePeripheral
         pages[#pages + 1] = pageIdentity
-        if autoModemSide then
+        if #wireless == 1 then
             pages[#pages + 1] = function(cfg)
                 if type(cfg.modem_side) ~= "string" or cfg.modem_side == "" then
-                    cfg.modem_side = autoModemSide
+                    cfg.modem_side = wireless[1]
                 end
                 return "forward"
             end
+        elseif #wireless > 1 then
+            pages[#pages + 1] = pageModemPicker
         else
             pages[#pages + 1] = pageModem
         end
@@ -1084,6 +1267,7 @@ local function buildPages(cfg, state)
         if cfg.role == "controller" then
             pages[#pages + 1] = pageAutoControl
             pages[#pages + 1] = pageUpdateChecks
+            pages[#pages + 1] = pageControllerPrefs
         end
         pages[#pages + 1] = pageConfirm
     end
@@ -1096,12 +1280,14 @@ local function runWizard(existingCfg, existingErr)
         existing_cfg = existingCfg,
         existing_err = existingErr,
         use_existing = existingCfg ~= nil,
+        previous_role = existingCfg and existingCfg.role or nil,
     }
     local idx = 1
 
     while true do
         local pages = buildPages(cfg, state)
         if idx > #pages then
+            cfg._previous_role = state.previous_role
             return cfg
         end
 
@@ -1127,7 +1313,7 @@ local function cacheBust(url, token)
     return url .. sep .. "_enmon=" .. tostring(token)
 end
 
-local function download(url, dest, token)
+local function download(url, dest, token, expectedHash)
     local ok, err = pcall(function()
         local response, herr = http.get(cacheBust(url, token or VERSION))
         if not response then error(tostring(herr) or "request failed") end
@@ -1135,12 +1321,58 @@ local function download(url, dest, token)
         local data = response.readAll()
         response.close()
         if code ~= 200 then error("HTTP " .. code) end
+        if expectedHash and expectedHash ~= "" then
+            local hmacOk, hmac = pcall(require, "lib/hmac")
+            if not hmacOk or not hmac then
+                error("hash verification unavailable (lib/hmac missing)")
+            end
+            local normalized = tostring(data or ""):gsub("\r\n", "\n")
+            local actual = string.lower(hmac.sha256(normalized))
+            if actual ~= string.lower(expectedHash) then
+                error("hash mismatch")
+            end
+        end
         ensureDir(fs.getDir(dest))
         local f = fs.open(dest, "w")
+        if not f then error("unable to open " .. tostring(dest)) end
         f.write(data)
         f.close()
     end)
     return ok, err
+end
+
+local function computeManifestIntegrity(manifest)
+    local hashes = type(manifest.hashes) == "table" and manifest.hashes or {}
+    local parts = {
+        tostring(manifest.version or ""),
+        tostring(tonumber(manifest.manifest_revision) or 0),
+        tostring(manifest.rollout_policy or ""),
+    }
+    local keys = {}
+    for key in pairs(hashes) do
+        if key ~= "manifest.json" then
+            keys[#keys + 1] = key
+        end
+    end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        parts[#parts + 1] = tostring(key) .. "=" .. tostring(hashes[key])
+    end
+    local fileGroups = { "common", "controller", "matrix", "reactor", "meter", "generator", "display", "pocket" }
+    local files = type(manifest.files) == "table" and manifest.files or {}
+    for _, group in ipairs(fileGroups) do
+        local list = files[group]
+        if type(list) == "table" then
+            for _, path in ipairs(list) do
+                parts[#parts + 1] = group .. ":" .. tostring(path)
+            end
+        end
+    end
+    local hmacOk, hmac = pcall(require, "lib/hmac")
+    if not hmacOk or not hmac then
+        return nil, "hash verification unavailable"
+    end
+    return string.lower(hmac.sha256(table.concat(parts, "\n")))
 end
 
 local function fetchManifest()
@@ -1286,18 +1518,90 @@ local function makeInstallLogger()
     return log
 end
 
-local function showInstallComplete(role)
+local function showInstallComplete(cfg)
     local win = drawChrome("Install Complete")
     local row = 1
+    local role = cfg.role
     row = writeParagraph(win, row, "ENMON was installed successfully for the " .. tostring(role) .. " role.", STYLE.ok_fg)
     row = row + 1
     row = writeParagraph(win, row, "Selected branch: " .. tostring(INSTALL_BRANCH), STYLE.root_fg)
     row = row + 1
-    row = writeParagraph(win, row, "startup.lua has been written by default, so ENMON will launch automatically after a reboot.", STYLE.root_fg)
+    row = writeParagraph(win, row, "Network channel: " .. tostring(cfg.channel or "--"), STYLE.root_fg)
     row = row + 1
-    row = writeParagraph(win, row, "Reboot now to start ENMON, or Exit if you want to reboot later.", STYLE.hint_fg)
+
+    if role == "controller" then
+        row = writeParagraph(win, row, "Next: install matrix/reactor/meter/generator/display/pocket nodes on this same channel, then Adopt each node by typing the claim code shown on its screen.", STYLE.hint_fg)
+    else
+        row = writeParagraph(win, row, "Next: after reboot this node shows a claim code on its screen. On the controller, open Updates and Adopt, then type that claim code. Codes stay off the wireless network.", STYLE.warn_fg)
+    end
+    row = row + 1
+    row = writeParagraph(win, row, "startup.lua launches ENMON automatically after reboot. Reboot now, or Exit to reboot later.", STYLE.root_fg)
+
     local action = waitNav(false, "Reboot", STYLE.install_bg)
     return action == "forward"
+end
+
+local function promptRetryOrExit(log)
+    log("Install failed. Retry downloads, or Exit.", STYLE.err_fg)
+    drawHint("R: retry   Q/any other key: exit")
+    local left = drawButton(2, select(2, ROOT.getSize()), "Exit", STYLE.exit_bg)
+    local right = drawButton(math.max(10, select(1, ROOT.getSize()) - 10), select(2, ROOT.getSize()), "Retry", STYLE.next_bg)
+    while true do
+        local event, a, b, c = os.pullEvent()
+        if event == "key" then
+            if a == keys.r then return true end
+            if a == keys.q or a == keys.enter then return false end
+        elseif event == "char" then
+            local ch = string.lower(a)
+            if ch == "r" then return true end
+            return false
+        elseif event == "mouse_click" then
+            if left and c == left.y and b >= left.x and b < left.x + left.w then
+                return false
+            elseif right and c == right.y and b >= right.x and b < right.x + right.w then
+                return true
+            end
+        end
+    end
+end
+
+local function readManagedFiles()
+    local path = ".enmon_managed_files"
+    if not fs.exists(path) then return {} end
+    local file = fs.open(path, "r")
+    if not file then return {} end
+    local raw = file.readAll()
+    file.close()
+    local ok, parsed = pcall(textutils.unserialize, raw)
+    if ok and type(parsed) == "table" and type(parsed.files) == "table" then
+        return parsed.files
+    end
+    return {}
+end
+
+local function writeManagedFiles(paths)
+    local file = fs.open(".enmon_managed_files", "w")
+    if not file then return false end
+    file.write(textutils.serialize({ files = paths or {} }))
+    file.close()
+    return true
+end
+
+local function pruneStaleManaged(newFiles, log)
+    local newSet = {}
+    for _, path in ipairs(newFiles) do
+        newSet[path] = true
+    end
+    local old = readManagedFiles()
+    for _, path in ipairs(old) do
+        if not newSet[path] and fs.exists(path) and not fs.isDir(path) then
+            local ok = pcall(fs.delete, path)
+            if ok then
+                log("Removed stale " .. tostring(path), STYLE.warn_fg)
+            end
+        end
+    end
+    writeManagedFiles(newFiles)
 end
 
 -- Main -----------------------------------------------------------------------
@@ -1323,46 +1627,103 @@ log("Fetching manifest...", STYLE.hint_fg)
 local manifest, manifestErr = fetchManifest()
 if not manifest then
     log("ERROR: " .. tostring(manifestErr), STYLE.err_fg)
-    log("Press any key to exit.", STYLE.hint_fg)
-    waitAnyKey()
-    cls()
-    return
+    if not promptRetryOrExit(log) then
+        cls()
+        return
+    end
+    -- One retry for manifest fetch only via re-entry would be complex; exit after failed retry prompt chooses exit.
+    -- Re-fetch once if user asked to retry.
+    log("Retrying manifest fetch...", STYLE.hint_fg)
+    manifest, manifestErr = fetchManifest()
+    if not manifest then
+        log("ERROR: " .. tostring(manifestErr), STYLE.err_fg)
+        waitAnyKey()
+        cls()
+        return
+    end
 end
 
 log("Manifest fetched.", STYLE.ok_fg)
 log("Downloading files for role: " .. cfg.role, STYLE.root_fg)
 
-local files = {}
-for _, path in ipairs(manifest.files.common or {}) do files[#files + 1] = path end
-for _, path in ipairs(manifest.files[cfg.role] or {}) do files[#files + 1] = path end
-
-local failed = {}
+local hashes = type(manifest.hashes) == "table" and manifest.hashes or {}
 local manifestToken = composeReleaseLabel(manifest.version or VERSION, manifest.manifest_revision or 0)
-for _, path in ipairs(files) do
-    local ok, err = download(manifest.base_url .. path, path, manifestToken)
-    if ok then
-        log("[OK]  " .. path, STYLE.ok_fg)
-    else
-        log("[ERR] " .. path .. " - " .. tostring(err), STYLE.err_fg)
-        failed[#failed + 1] = { path = path, err = err }
+local hmacPath = "lib/hmac.lua"
+local previousRole = cfg._previous_role
+cfg._previous_role = nil
+
+local function runDownloads()
+    local failed = {}
+
+    local hmacOk, hmacErr = download(manifest.base_url .. hmacPath, hmacPath, manifestToken, hashes[hmacPath])
+    if not hmacOk then
+        log("[ERR] " .. hmacPath .. " - " .. tostring(hmacErr), STYLE.err_fg)
+        failed[#failed + 1] = { path = hmacPath, err = hmacErr }
+        return failed, nil
     end
+    log("[OK]  " .. hmacPath .. " (hash bootstrap)", STYLE.ok_fg)
+
+    if type(hashes["manifest.json"]) == "string" and hashes["manifest.json"] ~= "" then
+        local actual, integrityErr = computeManifestIntegrity(manifest)
+        if not actual then
+            log("ERROR: " .. tostring(integrityErr), STYLE.err_fg)
+            failed[#failed + 1] = { path = "manifest.json", err = integrityErr }
+            return failed, nil
+        end
+        if actual ~= string.lower(hashes["manifest.json"]) then
+            log("ERROR: manifest integrity hash mismatch", STYLE.err_fg)
+            failed[#failed + 1] = { path = "manifest.json", err = "hash mismatch" }
+            return failed, nil
+        end
+        log("Manifest integrity verified.", STYLE.ok_fg)
+    end
+
+    local files = {}
+    for _, path in ipairs(manifest.files.common or {}) do files[#files + 1] = path end
+    for _, path in ipairs(manifest.files[cfg.role] or {}) do files[#files + 1] = path end
+
+    for _, path in ipairs(files) do
+        if path == hmacPath then
+            log("[OK]  " .. path .. " (already verified)", STYLE.ok_fg)
+        else
+            local ok, err = download(manifest.base_url .. path, path, manifestToken, hashes[path])
+            if ok then
+                log("[OK]  " .. path, STYLE.ok_fg)
+            else
+                log("[ERR] " .. path .. " - " .. tostring(err), STYLE.err_fg)
+                failed[#failed + 1] = { path = path, err = err }
+            end
+        end
+    end
+
+    local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua", manifestToken, hashes["lib/basalt.lua"])
+    if basaltOk then
+        log("[OK]  lib/basalt.lua", STYLE.ok_fg)
+    else
+        log("[ERR] lib/basalt.lua - " .. tostring(basaltErr), STYLE.err_fg)
+        failed[#failed + 1] = { path = "lib/basalt.lua", err = basaltErr }
+    end
+
+    return failed, files
 end
 
-local basaltOk, basaltErr = download(BASALT_URL, "lib/basalt.lua", manifestToken)
-if basaltOk then
-    log("[OK]  lib/basalt.lua", STYLE.ok_fg)
-else
-    log("[ERR] lib/basalt.lua - " .. tostring(basaltErr), STYLE.err_fg)
-    failed[#failed + 1] = { path = "lib/basalt.lua", err = basaltErr }
+local failed, files
+while true do
+    failed, files = runDownloads()
+    if #failed == 0 then
+        break
+    end
+    if not promptRetryOrExit(log) then
+        cls()
+        return
+    end
+    log("Retrying downloads...", STYLE.hint_fg)
 end
 
-if #failed > 0 then
-    log("Install failed. Check HTTP and download URLs, then re-run installer.", STYLE.err_fg)
-    log("Press any key to exit.", STYLE.hint_fg)
-    waitAnyKey()
-    cls()
-    return
+if previousRole and previousRole ~= cfg.role then
+    log("Role changed from " .. tostring(previousRole) .. " to " .. tostring(cfg.role) .. "; pruning stale managed files...", STYLE.hint_fg)
 end
+pruneStaleManaged(files, log)
 
 local okConfig, config = pcall(require, "lib/config")
 if okConfig and config then
@@ -1393,10 +1754,18 @@ log("startup.lua is ready; reboot to launch ENMON.", STYLE.hint_fg)
 
 os.sleep(0.8)
 
-local rebootNow = showInstallComplete(cfg.role)
+local rebootNow = showInstallComplete(cfg)
 cls()
 if rebootNow then
     os.reboot()
 end
+
+
+
+
+
+
+
+
 
 

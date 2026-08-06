@@ -1,11 +1,11 @@
 -- nodes/controller/init.lua
 -- Central authority node.
--- - Receives MATRIX_DATA and REACTOR_DATA from sensor nodes
--- - Evaluates auto-control thresholds and sends CMD_REACTOR_SET
+-- - Receives MATRIX/METER/REACTOR/GENERATOR telemetry from sensor nodes
+-- - Evaluates auto-control thresholds and sends CMD_REACTOR_SET / CMD_GENERATOR_SET
 -- - Broadcasts DISPLAY_UPDATE to display nodes
--- - Responds to POCKET_REQUEST with POCKET_DATA
+-- - Responds to POCKET_REQUEST / POCKET_CMD
 -- - Drives the controller HUD via ui/controller_hud.lua
--- - Fires speaker alerts when conditions are met
+-- - Fires speaker / redstone / webhook alerts when conditions are met
 
 local net  = require("lib/network")
 local controller_link = require("lib/controller_link")
@@ -44,10 +44,15 @@ local updates_ops
 
 local state = {
     matrix  = nil,
+    matrices = {},
     matrix_updated = 0,
     reactors = {},
+    generators = {},
+    meters = {},
     alerts   = {},
     alert_index = 1,
+    last_webhook_fingerprint = "",
+    last_webhook_at = 0,
     history = history.new({
         max_samples = 240,
         max_logs = 256,
@@ -117,22 +122,38 @@ local function rememberNode(node_id, role, sender_id, payload)
     }
 
     if role then entry.role = role end
-    if sender_id then entry.sender_id = sender_id end
+    -- Discovery must not overwrite the routing identity of an already-linked node.
+    local has_token = controller_link.hasStoredToken(node_id)
+    local stored_sender = controller_link.getStoredSenderId(node_id)
+    if sender_id then
+        if has_token and stored_sender ~= nil and stored_sender ~= sender_id then
+            change.sender_changed = previous_sender ~= nil and previous_sender ~= sender_id
+            entry.pending_sender_id = sender_id
+        else
+            entry.sender_id = sender_id
+        end
+    end
     if type(payload) == "table" then
         if payload.local_version then entry.local_version = payload.local_version end
         if payload.version then entry.local_version = payload.version end
         if payload.controller_id ~= nil then entry.controller_id = payload.controller_id end
         if payload.status ~= nil then entry.node_status = payload.status end
-        if payload.claim_code ~= nil then entry.claim_code = payload.claim_code end
+        -- Ignore claim_code from the wire (out-of-band only).
         if payload.adopted ~= nil then entry.adopted = payload.adopted == true end
     end
 
-    if entry.adopted ~= true and entry.claim_code then
-        entry.unlinked = true
-        entry.controller_id = nil
+    if has_token then
+        entry.unlinked = false
+        entry.adopted = true
+        entry.claim_code = nil
+        if stored_sender ~= nil and entry.pending_sender_id and stored_sender ~= entry.pending_sender_id then
+            entry.identity_conflict = true
+        end
     elseif entry.adopted == true then
         entry.unlinked = false
         entry.claim_code = nil
+    elseif type(payload) == "table" and payload.status == "unlinked" then
+        entry.unlinked = true
     end
 
     if change.sender_changed then
@@ -255,6 +276,9 @@ handlers_ops = handlers.new({
     updates = updates_ops,
     telemetry = telemetry_ops,
     sendToNode = sendToNode,
+    getActions = function()
+        return actions_ops
+    end,
 })
 
 refreshPanel = function(cfg)
@@ -304,6 +328,7 @@ actions_ops = actions.new({
 controller.setReactorActive = actions_ops.setReactorActive
 controller.setReactorControlRodLevel = actions_ops.setReactorControlRodLevel
 controller.adjustReactorControlRod = actions_ops.adjustReactorControlRod
+controller.setGeneratorActive = actions_ops.setGeneratorActive
 controller.requestUpdateCheck = actions_ops.requestUpdateCheck
 controller.offerUpdates = actions_ops.offerUpdates
 controller.startOfferedUpdates = actions_ops.startOfferedUpdates

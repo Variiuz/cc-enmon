@@ -1,1 +1,6 @@
 - Resolved in 0.4.0: Mekanism induction matrix values are normalized to FE-equivalent numbers before display, and the controller config editor now exposes an `Energy unit label` field with `FE` default and optional `RF` labeling.
+- Resolved in audit wave: reactor energy no longer falls back to capacity; setup validates low < high thresholds; controller force-update flag is honored; config write guards nil file handles; auto-control skips in-flight pending commands.
+- Resolved in audit wave: adoption claim codes are out-of-band only, adopt tokens are claim-wrapped, discovery cannot silently un-adopt linked nodes, and replace requires explicit confirmation.
+- Resolved in audit wave: updater swap rolls back on activation failure; installer verifies SHA-256 hashes; manifest integrity hash supported via bump-version.
+- Resolved in audit wave: pocket config parity, HUD reactor clamp + monitor wait, ETA empty/full and multi-matrix aggregation.
+- Resolved in wave 6: meter + generator roles (Energy Meter / IE), pocket remote control, controller redstone + Discord webhook alerts. Powah skipped (no CC peripheral).

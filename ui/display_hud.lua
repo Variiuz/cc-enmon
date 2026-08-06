@@ -108,17 +108,22 @@ local function buildWide(frame, w, h)
         :setPosition(2, py + 11):setSize(lw, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.label):setText("In --  Out --")
 
+    e.meter_io_lbl = frame:addLabel()
+        :setPosition(2, py + 12):setSize(lw, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.value):setText("IO --")
+
     e.hist_graph_w = math.max(8, lw - 2)
     e.hist_graph_h = 3
 
     local rx = math.floor(w / 2) + 2
     e.rx_title = frame:addLabel()
         :setPosition(rx, py):setSize(w - rx, 1):setBackground(COLORS.bg)
-        :setForeground(colors.yellow):setText("[ Reactors ]")
+        :setForeground(colors.yellow):setText("[ Reactors / Gens ]")
     e.rx_entries = {}
-    e._rx_start_row = py
+    e._rx_start_row = py + 1
     e._rx_x = rx
     e._rx_w = w - rx
+    e._rx_max_row = h - 1
 
     return e
 end
@@ -155,22 +160,36 @@ local function buildNarrow(frame, w, h)
     e.mat_output_summary = frame:addLabel()
         :setPosition(1, py+5):setSize(w, 1):setBackground(COLORS.bg)
         :setForeground(COLORS.label):setText("In --  Out --")
+    e.meter_io_lbl = frame:addLabel()
+        :setPosition(1, py+6):setSize(w, 1):setBackground(COLORS.bg)
+        :setForeground(COLORS.value):setText("IO --")
     e.hist_graph_w = math.max(6, w)
     e.hist_graph_h = 2
-    frame:addLabel():setPosition(1, py+7):setSize(w, 1):setBackground(COLORS.bg)
-        :setForeground(colors.yellow):setText("[Reactors]")
+    frame:addLabel():setPosition(1, py+8):setSize(w, 1):setBackground(COLORS.bg)
+        :setForeground(colors.yellow):setText("[Reactors/Gens]")
     e.rx_entries = {}
-    e._rx_start_row = py + 7
+    e._rx_start_row = py + 9
     e._rx_x = 1
     e._rx_w = w
+    e._rx_max_row = h - 1
     return e
 end
 
 local function ensureReactorEntry(frame, e, nid)
-    if e.rx_entries[nid] then return end
+    if e.rx_entries[nid] then return e.rx_entries[nid] end
+
+    local max_rows = math.max(0, math.floor((e._rx_max_row - e._rx_start_row + 1) / 2))
     local count = 0
     for _ in pairs(e.rx_entries) do count = count + 1 end
+    if max_rows > 0 and count >= max_rows then
+        return nil
+    end
+
     local row = e._rx_start_row + count * 2
+    if row + 1 > e._rx_max_row then
+        return nil
+    end
+
     local entry = {}
     entry.label = frame:addLabel()
         :setPosition(e._rx_x, row):setSize(e._rx_w, 1)
@@ -181,11 +200,22 @@ local function ensureReactorEntry(frame, e, nid)
         :setBackground(COLORS.bg):setForeground(colors.lightGray)
         :setText("")
     e.rx_entries[nid] = entry
+    return entry
+end
+
+local function waitForMonitor(mon_side)
+    while true do
+        local monitor = peripheral.wrap(mon_side)
+        if monitor then
+            return monitor
+        end
+        print("[display_hud] Waiting for monitor: " .. tostring(mon_side))
+        os.sleep(1)
+    end
 end
 
 function hud.init(mon_side)
-    local monitor = peripheral.wrap(mon_side)
-    if not monitor then error("[display_hud] Monitor not found: " .. tostring(mon_side)) end
+    local monitor = waitForMonitor(mon_side)
     monitor.setTextScale(0.5)
     _frame = basalt.createFrame():setTerm(monitor)
     _frame:setBackground(COLORS.bg)
@@ -197,6 +227,7 @@ function hud.init(mon_side)
         _elements = buildNarrow(_frame, w, h)
         _elements._wide = false
     end
+    _elements._rx_max_row = h - 1
 end
 
 function hud.update(data)
@@ -207,7 +238,7 @@ function hud.update(data)
     e.clock:setText(data.timestamp or "--:--:--")
 
     if data.alerts and #data.alerts > 0 then
-        e.alert_bar:setText("! " .. table.concat(data.alerts, "  |  "))
+        e.alert_bar:setText(truncate("! " .. table.concat(data.alerts, "  |  "), e._rx_w or 40))
         e.alert_bar:setForeground(COLORS.alert_fg)
     else
         e.alert_bar:setText("  All systems nominal")
@@ -222,8 +253,10 @@ function hud.update(data)
         if e.mat_max_val  then e.mat_max_val:setText(util.formatEnergy(m.max_energy, energy_unit)) end
         if e.mat_in_val   then e.mat_in_val:setText("+" .. util.formatRate(m.last_input, energy_unit)) end
         if e.mat_out_val  then e.mat_out_val:setText("-" .. util.formatRate(m.last_output, energy_unit)) end
-        e.mat_fill_summary:setText("Fill " .. util.formatPercent(fill) .. "  Recent " .. select(2, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2)))
-        e.mat_output_summary:setText(truncate("In +" .. util.formatRate(m.last_input, energy_unit) .. "  Out -" .. util.formatRate(m.last_output, energy_unit), e._wide and (e.hist_graph_w or e._rx_w) or e._rx_w))
+        e.mat_fill_summary:setText("Fill " .. util.formatPercent(fill) .. "  " .. tostring(data.matrix_eta or "ETA --") .. "  Recent " .. select(2, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2)))
+        local matrix_count = tonumber(data.matrix_count) or 0
+        local count_prefix = matrix_count > 1 and (tostring(matrix_count) .. "x ") or ""
+        e.mat_output_summary:setText(truncate(count_prefix .. "In +" .. util.formatRate(m.last_input, energy_unit) .. "  Out -" .. util.formatRate(m.last_output, energy_unit), e._wide and (e.hist_graph_w or e._rx_w) or e._rx_w))
         local fill_rows = select(1, graph.renderMatrixFillBars(samples, e.hist_graph_w or 10, e.hist_graph_h or 2))
         setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or e._rx_w, barColor(fill))
     else
@@ -234,15 +267,38 @@ function hud.update(data)
         setGraphRows(e.hist_fill_rows, fill_rows, e.hist_graph_w or e._rx_w, colors.lightGray)
     end
 
+    if e.meter_io_lbl then
+        local meter_io = data.meter_io
+        if meter_io and not data.meter_stale then
+            local count = tonumber(data.meter_count) or tonumber(meter_io.meter_count) or 0
+            local prefix = count > 1 and (tostring(count) .. "x IO ") or "IO "
+            e.meter_io_lbl:setText(truncate(prefix .. util.formatRate(meter_io.rate or 0, energy_unit), e._rx_w or 40))
+        else
+            e.meter_io_lbl:setText("IO --")
+        end
+    end
+
     if data.reactors then
         for nid, r in pairs(data.reactors) do
-            ensureReactorEntry(_frame, e, nid)
-            local entry = e.rx_entries[nid]
+            local entry = ensureReactorEntry(_frame, e, nid)
             if entry then
                 local line_one, line_two = graph.reactorOverviewLines(nid, r, energy_unit)
                 entry.label:setText(truncate(line_one, e._rx_w))
                 entry.detail:setText(truncate(line_two, e._rx_w))
                 entry.label:setForeground(r.active and COLORS.ok_fg or COLORS.alert_fg)
+                entry.detail:setForeground(colors.lightGray)
+            end
+        end
+    end
+
+    if data.generators then
+        for nid, g in pairs(data.generators) do
+            local entry = ensureReactorEntry(_frame, e, "G:" .. tostring(nid))
+            if entry then
+                local status = g.active and "ON" or "OFF"
+                entry.label:setText(truncate("G " .. tostring(nid) .. "  " .. status, e._rx_w))
+                entry.detail:setText(truncate(util.formatRate(g.produced_last_t or 0, energy_unit), e._rx_w))
+                entry.label:setForeground(g.active and COLORS.ok_fg or COLORS.alert_fg)
                 entry.detail:setForeground(colors.lightGray)
             end
         end

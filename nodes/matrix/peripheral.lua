@@ -9,7 +9,23 @@ local MATRIX_TYPES = {
     "mekanism.induction_port",
 }
 
-function peripheral_logic.findInductionPort(logLine)
+function peripheral_logic.findInductionPort(logLine, boundName)
+    if type(boundName) == "string" and boundName ~= "" then
+        local port = pmgr.wrap(boundName)
+        if port and type(port.getEnergy) == "function" then
+            local energy = pmgr.call(port, "getEnergy")
+            if energy ~= nil then
+                if logLine then
+                    logLine("[matrix] Using bound peripheral: " .. boundName, colors.lime)
+                end
+                return port
+            end
+        end
+        if logLine then
+            logLine("[matrix] Bound peripheral missing/invalid (" .. boundName .. "); falling back to auto-find", colors.orange)
+        end
+    end
+
     for _, type_name in ipairs(MATRIX_TYPES) do
         local port = pmgr.find(type_name)
         if port then
@@ -36,9 +52,9 @@ function peripheral_logic.findInductionPort(logLine)
     return nil
 end
 
-function peripheral_logic.waitForPort(logLine)
+function peripheral_logic.waitForPort(logLine, boundName)
     while true do
-        local port = peripheral_logic.findInductionPort(logLine)
+        local port = peripheral_logic.findInductionPort(logLine, boundName)
         if port then return port end
         os.sleep(1)
     end

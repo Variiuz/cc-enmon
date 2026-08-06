@@ -354,7 +354,9 @@ function updates.new(opts)
                         entry.update_status = "identity-conflict"
                     else
                         local needs_update = entry.needs_update
-                        if needs_update == nil and entry.local_version and state.updates.latest_version then
+                        if state.updates.force then
+                            needs_update = true
+                        elseif needs_update == nil and entry.local_version and state.updates.latest_version then
                             needs_update = version.isNewer(state.updates.latest_version, entry.local_version)
                         end
                         if needs_update then
@@ -404,6 +406,7 @@ function updates.new(opts)
 
         local offer = {
             latest_version = state.updates.latest_version,
+            force = state.updates.force == true,
             queue = queue,
             pending = pending,
             pending_count = 0,
@@ -421,7 +424,7 @@ function updates.new(opts)
             local entry = state.updates.nodes[item.node_id]
             local _, _, msg_id = sendToNode(item.node_id, item.sender_id, net.MSG.UPDATE_OFFER, {
                 desired_version = offer.latest_version,
-                force = false,
+                force = offer.force,
             })
             offer.msg_ids[item.node_id] = msg_id
             if entry then entry.update_status = "offered" end
@@ -451,6 +454,7 @@ function updates.new(opts)
             queued = {},
             pending = offer.pending,
             latest_version = offer.latest_version,
+            force = offer.force == true,
             current = nil,
             waiting_logged = false,
             cancelled = false,
@@ -539,37 +543,75 @@ function updates.new(opts)
             logLine("[ctrl] Node not found: " .. tostring(node_id), colors.orange)
             return false
         end
-        if not entry.unlinked then
-            logLine("[ctrl] Node is not waiting for adoption", colors.orange)
+        if not entry.unlinked and not entry.identity_conflict then
+            logLine("[ctrl] Node is not waiting for adoption or replace", colors.orange)
             return false
         end
 
-        if type(entry.claim_code) ~= "string" or entry.claim_code == "" then
-            logLine("[ctrl] Node has no active claim code; wait for its next discovery heartbeat", colors.orange)
+        local target_sender = entry.pending_sender_id or entry.sender_id
+        if not target_sender then
+            logLine("[ctrl] Node has no live sender yet; wait for discovery", colors.orange)
             return false
         end
 
-        local token = controller_link.issueNodeToken(entry.node_id, entry.sender_id, entry.role)
-        if not token then
-            logLine("[ctrl] Failed to issue node token", colors.red)
+        local replacing = controller_link.hasStoredToken(entry.node_id)
+        if replacing then
+            logLine("[ctrl] Node already has a token; confirm replace on the terminal", colors.orange)
+            if not controller_link.promptYesNo("Replace existing link for " .. tostring(node_id) .. "?", false) then
+                logLine("[ctrl] Replace cancelled", colors.orange)
+                return false
+            end
+        end
+
+        logLine("[ctrl] Enter claim code from the node screen on the terminal", colors.lightBlue)
+        local claim_code = controller_link.promptClaimCode(
+            "Claim code for " .. tostring(node_id) .. " (shown on that computer, not on the network):"
+        )
+        if not claim_code then
+            logLine("[ctrl] Adoption cancelled: empty claim code", colors.orange)
             return false
         end
 
-        sendToEntry(entry, net.MSG.ADOPT_REQUEST, {
-            claim_code = entry.claim_code,
-            controller_token = token,
+        local token, token_err = controller_link.issueNodeToken(entry.node_id, target_sender, entry.role, {
+            replace = replacing,
         })
+        if not token then
+            logLine("[ctrl] Failed to issue node token: " .. tostring(token_err), colors.red)
+            return false
+        end
+
+        local wrapped = controller_link.wrapAdoptToken(token, claim_code, entry.node_id, target_sender)
+        if not wrapped then
+            logLine("[ctrl] Failed to wrap adopt token", colors.red)
+            return false
+        end
+
+        local ok, err = net.sendTargeted(net.MSG.ADOPT_REQUEST, controller_link.buildControllerPayload(entry.node_id, {
+            wrapped_token = wrapped,
+            wrap_v = 1,
+        }), entry.node_id, target_sender, nil, {
+            auth_key = claim_code,
+        })
+        if not ok then
+            logLine("[ctrl] Failed to send adoption request: " .. tostring(err), colors.red)
+            return false
+        end
+
+        entry.sender_id = target_sender
+        entry.pending_sender_id = nil
         entry.controller_id = os.getComputerID()
         entry.controller_mismatch = false
+        entry.identity_conflict = false
         entry.update_status = "adopting"
         entry.message = "Adoption sent; waiting for secure hello"
-        logLine("[ctrl] Adoption request sent to " .. tostring(node_id) .. " (claim " .. tostring(entry.claim_code) .. ")", colors.lime)
+        logLine("[ctrl] Adoption request sent to " .. tostring(node_id) .. " (claim kept off-wire)", colors.lime)
         refreshPanel(cfg)
         return true
     end
 
     function api.performUpdateCheck(cfg, force)
-        local info, err = updater.checkForUpdate(cfg.get("role"), nil, false)
+        force = force == true
+        local info, err = updater.checkForUpdate(cfg.get("role"), nil, force)
         if not info then
             logLine("[ctrl] Update check failed: " .. tostring(err), colors.red)
             return false
@@ -578,6 +620,7 @@ function updates.new(opts)
         state.updates.controller_version = info.current_version
         state.updates.latest_version = info.latest_version
         state.updates.rollout_policy = info.rollout_policy or version.getRolloutPolicy()
+        state.updates.force = force
 
         local self_entry = refreshSelfEntry(cfg, "online")
         if self_entry then
@@ -586,13 +629,13 @@ function updates.new(opts)
             self_entry.update_status = info.needs_update and "ready" or "online-current"
         end
 
-        logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ", policy " .. tostring(state.updates.rollout_policy or "controller-first") .. ")", colors.lightBlue)
+        logLine("[ctrl] Latest manifest version: " .. tostring(info.latest_version) .. " (local " .. tostring(info.current_version) .. ", policy " .. tostring(state.updates.rollout_policy or "controller-first") .. (force and ", force" or "") .. ")", colors.lightBlue)
         state.updates.last_check_ids = {}
         for node_id, entry in pairs(state.updates.nodes) do
             if node_id ~= cfg.get("node_id") and entry.sender_id and not entry.unlinked then
                 local _, _, msg_id = sendToEntry(entry, net.MSG.UPDATE_CHECK, {
                     desired_version = info.latest_version,
-                    force = false,
+                    force = force,
                 })
                 state.updates.last_check_ids[node_id] = msg_id
             end
@@ -757,7 +800,7 @@ function updates.new(opts)
         logLine("[ctrl] Starting update on " .. tostring(next_node.node_id) .. " (" .. tostring(next_node.role) .. ")", colors.lightBlue)
         local _, _, msg_id = sendToNode(next_node.node_id, next_node.sender_id, net.MSG.UPDATE_START, {
             desired_version = rollout.latest_version,
-            force = false,
+            force = rollout.force == true,
         })
 
         live.update_status = "starting"

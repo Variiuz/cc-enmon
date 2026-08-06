@@ -22,9 +22,84 @@ local BRANCHES = {
     },
 }
 
-local function cls()
-    term.clear()
-    term.setCursorPos(1, 1)
+-- Match config editor / installer-full chrome.
+local STYLE = {
+    root_bg      = colors.lightGray,
+    root_fg      = colors.black,
+    header_bg    = colors.gray,
+    header_fg    = colors.white,
+    section_bg   = colors.lime,
+    section_fg   = colors.black,
+    hint_fg      = colors.gray,
+    highlight_bg = colors.blue,
+    highlight_fg = colors.white,
+    next_bg      = colors.blue,
+    exit_bg      = colors.red,
+    button_fg    = colors.black,
+    ok_fg        = colors.lime,
+    err_fg       = colors.red,
+}
+
+local ROOT = term.current()
+
+local function truncate(text, width)
+    text = tostring(text or "")
+    if width <= 0 then return "" end
+    if #text <= width then return text end
+    if width <= 3 then return text:sub(1, width) end
+    return text:sub(1, width - 3) .. "..."
+end
+
+local function fillLine(y, bg, fg)
+    local w = select(1, ROOT.getSize())
+    ROOT.setCursorPos(1, y)
+    ROOT.setBackgroundColor(bg)
+    ROOT.setTextColor(fg or STYLE.root_fg)
+    ROOT.write(string.rep(" ", w))
+end
+
+local function writeAt(x, y, text, fg, bg)
+    local w = select(1, ROOT.getSize())
+    if y < 1 or x > w then return end
+    text = tostring(text or "")
+    if x < 1 then
+        text = text:sub(2 - x)
+        x = 1
+    end
+    ROOT.setCursorPos(x, y)
+    if bg then ROOT.setBackgroundColor(bg) end
+    if fg then ROOT.setTextColor(fg) end
+    ROOT.write(truncate(text, w - x + 1))
+end
+
+local function centerText(y, text, fg, bg)
+    local w = select(1, ROOT.getSize())
+    local x = math.max(1, math.floor((w - #text) / 2) + 1)
+    writeAt(x, y, text, fg, bg)
+end
+
+local function drawChrome(section)
+    local w, h = ROOT.getSize()
+    ROOT.setBackgroundColor(STYLE.root_bg)
+    ROOT.setTextColor(STYLE.root_fg)
+    ROOT.clear()
+    fillLine(1, STYLE.header_bg, STYLE.header_fg)
+    centerText(1, "ENMON Bootstrap", STYLE.header_fg, STYLE.header_bg)
+    fillLine(2, STYLE.section_bg, STYLE.section_fg)
+    writeAt(2, 2, section, STYLE.section_fg, STYLE.section_bg)
+    fillLine(h - 1, STYLE.root_bg, STYLE.hint_fg)
+    fillLine(h, STYLE.root_bg, STYLE.root_fg)
+    return w, h
+end
+
+local function drawButton(x, y, text, bg)
+    local body = " " .. text .. " "
+    writeAt(x, y, body, STYLE.button_fg, bg)
+    return { x = x, y = y, w = #body }
+end
+
+local function inRegion(region, x, y)
+    return region and y == region.y and x >= region.x and x < (region.x + region.w)
 end
 
 local function composeReleaseLabel(baseVersion, manifestRevision)
@@ -165,78 +240,138 @@ local function download(url, path)
     return true
 end
 
+local function promptCustomBranch()
+    local w, h = drawChrome("Custom Branch")
+    writeAt(2, 4, "Enter any GitHub branch name to install from.", STYLE.root_fg, STYLE.root_bg)
+    writeAt(2, 6, "Branch name:", STYLE.root_fg, STYLE.root_bg)
+    writeAt(2, h - 1, "Leave blank to cancel.", STYLE.hint_fg, STYLE.root_bg)
+    local box = window.create(ROOT, 2, 7, math.max(1, w - 2), 1, true)
+    box.setBackgroundColor(colors.white)
+    box.setTextColor(colors.black)
+    box.clear()
+    local previous = term.redirect(box)
+    box.setCursorPos(1, 1)
+    local value = read()
+    term.redirect(previous)
+    value = tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if value == "" then return nil end
+    return value
+end
+
 local function chooseBranch(installedBranch)
-    while true do
-        cls()
-        print("ENMON Bootstrap Installer")
-        print("")
-        if installedBranch then
-            print("Installed branch: " .. tostring(installedBranch))
-        else
-            print("Installed branch: none")
-        end
-        print("")
-        print("Choose the branch to install from:")
-        print("")
-
-        for index, entry in ipairs(BRANCHES) do
-            print(string.format("  %d. %s", index, branchSummary(entry)))
-            print("     " .. tostring(entry.note))
-        end
-
-        local customIndex = #BRANCHES + 1
-        print(string.format("  %d. Custom branch", customIndex))
-        print("     Enter any branch name manually")
-        print("")
-
-        local defaultIndex = 1
-        for index, entry in ipairs(BRANCHES) do
-            if entry.branch == installedBranch then
-                defaultIndex = index
-                break
-            end
-        end
-
-        write(string.format("Select branch [%d]: ", defaultIndex))
-        local answer = tostring(read() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if answer == "" then
-            return BRANCHES[defaultIndex].branch
-        end
-
-        local lowered = answer:lower()
-        if lowered == "q" or lowered == "quit" or lowered == "exit" then
-            return nil
-        end
-
-        local numeric = tonumber(answer)
-        if numeric and BRANCHES[numeric] then
-            return BRANCHES[numeric].branch
-        end
-        if numeric == customIndex then
-            write("Branch name: ")
-            local custom = tostring(read() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-            if custom ~= "" then
-                return custom
-            end
-        end
-
-        for _, entry in ipairs(BRANCHES) do
-            if lowered == entry.branch:lower() or lowered == entry.label:lower() then
-                return entry.branch
-            end
-        end
-
-        print("")
-        print("Invalid selection. Press any key to try again.")
-        os.pullEvent("key")
+    local items = {}
+    for _, entry in ipairs(BRANCHES) do
+        items[#items + 1] = {
+            branch = entry.branch,
+            label = branchSummary(entry),
+            note = entry.note,
+        }
     end
+    items[#items + 1] = {
+        branch = "__custom__",
+        label = "Custom branch",
+        note = "Enter any branch name manually",
+    }
+
+    local selected = 1
+    for index, entry in ipairs(BRANCHES) do
+        if entry.branch == installedBranch then
+            selected = index
+            break
+        end
+    end
+
+    while true do
+        local w, h = drawChrome("Branch Selection")
+        local row = 4
+        writeAt(2, row, "Choose the branch to install from.", STYLE.root_fg, STYLE.root_bg)
+        row = row + 1
+        if installedBranch then
+            writeAt(2, row, "Installed: " .. tostring(installedBranch), STYLE.ok_fg, STYLE.root_bg)
+        else
+            writeAt(2, row, "Installed: none", STYLE.hint_fg, STYLE.root_bg)
+        end
+        row = row + 2
+
+        local list_start = row
+        for i, item in ipairs(items) do
+            local isSelected = i == selected
+            local fg = isSelected and STYLE.highlight_fg or STYLE.root_fg
+            local bg = isSelected and STYLE.highlight_bg or STYLE.root_bg
+            writeAt(2, row, truncate((isSelected and "> " or "  ") .. item.label, w - 3), fg, bg)
+            row = row + 1
+            writeAt(4, row, truncate(item.note, w - 5), STYLE.hint_fg, STYLE.root_bg)
+            row = row + 1
+        end
+
+        writeAt(2, h - 1, "Up/down: select   Enter: confirm   Q: exit", STYLE.hint_fg, STYLE.root_bg)
+        local exitBtn = drawButton(2, h, "Exit", STYLE.exit_bg)
+        local selectLabel = "Select " .. string.char(26)
+        local selectBtn = drawButton(math.max(exitBtn.x + exitBtn.w + 2, w - (#selectLabel + 3)), h, selectLabel, STYLE.next_bg)
+
+        local event, a, b, c = os.pullEvent()
+        if event == "key" then
+            if a == keys.up then
+                selected = math.max(1, selected - 1)
+            elseif a == keys.down then
+                selected = math.min(#items, selected + 1)
+            elseif a == keys.enter or a == keys.right then
+                local choice = items[selected]
+                if choice.branch == "__custom__" then
+                    local custom = promptCustomBranch()
+                    if custom then return custom end
+                else
+                    return choice.branch
+                end
+            elseif a == keys.q then
+                return nil
+            end
+        elseif event == "char" then
+            local ch = string.lower(a)
+            if ch == "q" then
+                return nil
+            end
+            local idx = tonumber(ch)
+            if idx and items[idx] then
+                selected = idx
+            end
+        elseif event == "mouse_click" then
+            if inRegion(exitBtn, b, c) then
+                return nil
+            elseif inRegion(selectBtn, b, c) then
+                local choice = items[selected]
+                if choice.branch == "__custom__" then
+                    local custom = promptCustomBranch()
+                    if custom then return custom end
+                else
+                    return choice.branch
+                end
+            elseif c >= list_start and c < list_start + (#items * 2) then
+                local index = math.floor((c - list_start) / 2) + 1
+                if items[index] then
+                    selected = index
+                end
+            end
+        end
+    end
+end
+
+local function cls()
+    term.setBackgroundColor(colors.black)
+    term.setTextColor(colors.white)
+    term.clear()
+    term.setCursorPos(1, 1)
 end
 
 cls()
 
 if not http then
-    print("HTTP is disabled in ComputerCraft.")
-    print("Enable it before running the installer.")
+    drawChrome("HTTP Disabled")
+    writeAt(2, 4, "HTTP is disabled in ComputerCraft.", STYLE.err_fg, STYLE.root_bg)
+    writeAt(2, 6, "Enable it before running the installer.", STYLE.root_fg, STYLE.root_bg)
+    writeAt(2, select(2, ROOT.getSize()) - 1, "Press any key to exit.", STYLE.hint_fg, STYLE.root_bg)
+    os.pullEvent("key")
+    cls()
     return
 end
 
@@ -244,30 +379,31 @@ local installedBranch = readInstalledBranch()
 local selectedBranch = chooseBranch(installedBranch)
 if not selectedBranch then
     cls()
-    print("Installer cancelled.")
     return
 end
 
-cls()
-print("ENMON Bootstrap Installer")
-print("")
-print("Selected branch: " .. tostring(selectedBranch))
-print("Downloading full installer...")
+local w, h = drawChrome("Downloading")
+writeAt(2, 4, "Selected branch: " .. tostring(selectedBranch), STYLE.root_fg, STYLE.root_bg)
+writeAt(2, 6, "Downloading full installer...", STYLE.hint_fg, STYLE.root_bg)
 
 local installerUrl = RAW_ROOT .. selectedBranch .. "/" .. FULL_INSTALLER_NAME
 local ok, err = download(installerUrl, TEMP_INSTALLER_PATH)
 if not ok then
-    print("Download failed: " .. tostring(err))
-    print("URL: " .. installerUrl)
+    writeAt(2, 8, "Download failed: " .. tostring(err), STYLE.err_fg, STYLE.root_bg)
+    writeAt(2, 10, truncate("URL: " .. installerUrl, w - 3), STYLE.hint_fg, STYLE.root_bg)
+    writeAt(2, h - 1, "Press any key to exit.", STYLE.hint_fg, STYLE.root_bg)
+    os.pullEvent("key")
+    cls()
     return
 end
 
-print("Running full installer...")
+writeAt(2, 8, "Running full installer...", STYLE.ok_fg, STYLE.root_bg)
 local runOk, runErr = shell.run(TEMP_INSTALLER_PATH, selectedBranch)
 if fs.exists(TEMP_INSTALLER_PATH) then
     fs.delete(TEMP_INSTALLER_PATH)
 end
 
 if runOk == false then
+    cls()
     print("Installer failed: " .. tostring(runErr))
 end

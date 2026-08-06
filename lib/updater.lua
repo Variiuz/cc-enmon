@@ -191,6 +191,85 @@ local function removeLiveWithBackup(root, relPath, logger)
     return true
 end
 
+local function restoreFromBackup(root, relPath, logger)
+    local archived = backupPath(root, relPath)
+    if fs.exists(relPath) then
+        local okDelete, deleteErr = pcall(fs.delete, relPath)
+        if not okDelete then
+            return false, tostring(deleteErr)
+        end
+    end
+    if fs.exists(archived) then
+        log(logger, "Restoring " .. relPath .. " from backup")
+        return safeCopy(archived, relPath)
+    end
+    return true
+end
+
+local function rollbackActivated(state, activated, logger)
+    log(logger, "Rolling back partial update activation")
+    for index = #activated, 1, -1 do
+        local relPath = activated[index]
+        local ok, err = restoreFromBackup(state.backup_dir, relPath, logger)
+        if not ok then
+            log(logger, "Rollback failed for " .. tostring(relPath) .. ": " .. tostring(err))
+        end
+    end
+end
+
+function updater.computeManifestIntegrity(manifest)
+    if type(manifest) ~= "table" then
+        return nil
+    end
+
+    local hashes = type(manifest.hashes) == "table" and manifest.hashes or {}
+    local parts = {
+        tostring(manifest.version or ""),
+        tostring(tonumber(manifest.manifest_revision) or 0),
+        tostring(manifest.rollout_policy or ""),
+    }
+
+    local keys = {}
+    for key in pairs(hashes) do
+        if key ~= "manifest.json" then
+            keys[#keys + 1] = key
+        end
+    end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        parts[#parts + 1] = tostring(key) .. "=" .. tostring(hashes[key])
+    end
+
+    local fileGroups = { "common", "controller", "matrix", "reactor", "meter", "generator", "display", "pocket" }
+    local files = type(manifest.files) == "table" and manifest.files or {}
+    for _, group in ipairs(fileGroups) do
+        local list = files[group]
+        if type(list) == "table" then
+            for _, path in ipairs(list) do
+                parts[#parts + 1] = group .. ":" .. tostring(path)
+            end
+        end
+    end
+
+    return hashContent(table.concat(parts, "\n"))
+end
+
+function updater.verifyManifestIntegrity(manifest)
+    if type(manifest) ~= "table" then
+        return false, "manifest missing"
+    end
+    local hashes = type(manifest.hashes) == "table" and manifest.hashes or {}
+    local expected = hashes["manifest.json"]
+    if type(expected) ~= "string" or expected == "" then
+        return false, "manifest integrity hash missing"
+    end
+    local actual = updater.computeManifestIntegrity(manifest)
+    if actual ~= string.lower(expected) then
+        return false, "manifest integrity hash mismatch"
+    end
+    return true
+end
+
 function updater.fetchRemoteManifest(base_url)
     local root = base_url or version.getBaseUrl()
     local raw, err = readHttp(cacheBust(root .. "manifest.json", tostring(os.epoch and os.epoch("utc") or os.clock())))
@@ -199,6 +278,13 @@ function updater.fetchRemoteManifest(base_url)
     local manifest = version.parseManifest(raw)
     if type(manifest) ~= "table" then
         return nil, "Remote manifest parse error"
+    end
+    local hashes = type(manifest.hashes) == "table" and manifest.hashes or {}
+    if type(hashes["manifest.json"]) == "string" and hashes["manifest.json"] ~= "" then
+        local okIntegrity, integrityErr = updater.verifyManifestIntegrity(manifest)
+        if not okIntegrity then
+            return nil, integrityErr
+        end
     end
     manifest.base_url = root
     return manifest
@@ -267,9 +353,18 @@ local function stageFiles(entries, logger, force)
         local localRaw = nil
         if force ~= true then
             localRaw = readLocalFile(entry.path)
-            if localRaw and contentMatchesHash(localRaw, entry.hash) then
-                log(logger, "Skipping up-to-date " .. entry.path .. " (hash match)")
-                goto continue
+            if localRaw then
+                local skip = false
+                if entry.path == "manifest.json" and entry.hash then
+                    local parsed = version.parseManifest(localRaw)
+                    skip = parsed ~= nil and updater.computeManifestIntegrity(parsed) == string.lower(entry.hash)
+                elseif contentMatchesHash(localRaw, entry.hash) then
+                    skip = true
+                end
+                if skip then
+                    log(logger, "Skipping up-to-date " .. entry.path .. " (hash match)")
+                    goto continue
+                end
             end
         end
 
@@ -280,7 +375,20 @@ local function stageFiles(entries, logger, force)
             return nil, "Failed to download " .. entry.path .. ": " .. tostring(err)
         end
 
-        if entry.hash and not contentMatchesHash(raw, entry.hash) then
+        if entry.path == "manifest.json" then
+            local parsed = version.parseManifest(raw)
+            if type(parsed) ~= "table" then
+                clearPath(stageDir)
+                return nil, "Downloaded manifest parse error"
+            end
+            if entry.hash then
+                local okIntegrity, integrityErr = updater.verifyManifestIntegrity(parsed)
+                if not okIntegrity then
+                    clearPath(stageDir)
+                    return nil, integrityErr or "Downloaded manifest integrity mismatch"
+                end
+            end
+        elseif entry.hash and not contentMatchesHash(raw, entry.hash) then
             clearPath(stageDir)
             return nil, "Downloaded hash mismatch for " .. entry.path
         end
@@ -345,18 +453,21 @@ function updater.finalizeSwap(state, logger)
         end
     end
 
+    local activated = {}
     for _, relPath in ipairs(state.files) do
         local stagedPath = fs.combine(state.stage_dir, relPath)
         local archived = backupPath(state.backup_dir, relPath)
         if fs.exists(relPath) and not fs.exists(archived) then
             local ok, err = removeLiveWithBackup(state.backup_dir, relPath, logger)
             if not ok then
+                rollbackActivated(state, activated, logger)
                 return false, "failed to back up live file " .. relPath .. ": " .. tostring(err)
             end
         end
 
         local stagedRaw, stageErr = readLocalFile(stagedPath)
         if not stagedRaw then
+            rollbackActivated(state, activated, logger)
             return false, "failed to read staged file " .. relPath .. ": " .. tostring(stageErr)
         end
 
@@ -368,13 +479,16 @@ function updater.finalizeSwap(state, logger)
             end
             local ok, err = safeCopy(stagedPath, relPath)
             if not ok then
+                rollbackActivated(state, activated, logger)
                 return false, "failed to activate " .. relPath .. ": " .. tostring(err)
             end
+            activated[#activated + 1] = relPath
         end
     end
 
     local ok, err = writeManagedFiles(state.managed_files)
     if not ok then
+        rollbackActivated(state, activated, logger)
         return false, err
     end
     clearPath(state.backup_dir)

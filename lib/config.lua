@@ -1,7 +1,7 @@
 -- lib/config.lua
 -- Read/write enmon.cfg using textutils.serialize.
 -- Config fields:
---   role         string  "controller" | "matrix" | "reactor" | "display" | "pocket"
+--   role         string  "controller" | "matrix" | "reactor" | "meter" | "generator" | "display" | "pocket"
 --   node_id      string  unique identifier for this node (e.g. "matrix_1")
 --   channel      number  ender modem channel (default 42)
 --   modem_side   string  side/name of modem peripheral to bind for ENMON traffic
@@ -9,14 +9,24 @@
 --   controller_token string per-node operational auth token issued on adoption
 --   monitor_side string  side/name of monitor peripheral (controller + display)
 --   speaker_side string  side/name of speaker peripheral (controller, optional)
+--   bound_peripheral string optional device peripheral name for matrix/reactor/meter/generator
 --   -- Controller-only --
---   auto_ctrl    boolean  enable automatic reactor control
+--   auto_ctrl    boolean  enable automatic reactor/generator control
 --   threshold_low  number  matrix fill % to trigger reactor start  (default 0.25)
 --   threshold_high number  matrix fill % to trigger reactor stop   (default 0.90)
 --   update_check_interval number seconds between controller manifest checks (default 90)
+--   alert_redstone_side string optional computer side for alert redstone output
+--   alert_webhook_url string optional Discord-compatible webhook URL
 
 local CONFIG_PATH = "enmon.cfg"
-local CONFIG_VERSION = 7
+local CONFIG_VERSION = 9
+
+local BIND_ROLES = {
+    matrix = true,
+    reactor = true,
+    meter = true,
+    generator = true,
+}
 
 local DEFAULTS = {
     role           = nil,
@@ -27,12 +37,15 @@ local DEFAULTS = {
     controller_token = nil,
     monitor_side   = nil,
     speaker_side   = nil,
+    bound_peripheral = nil,
     auto_ctrl      = true,
     threshold_low  = 0.25,
     threshold_high = 0.90,
     update_check_interval = 90,
     history_persistence_mode = "prompt_when_disk_detected",
     energy_unit = "FE",
+    alert_redstone_side = nil,
+    alert_webhook_url = nil,
 }
 
 local config = {}
@@ -115,6 +128,34 @@ local function normalizeEnergyUnit(value, fallback)
     return text
 end
 
+local VALID_REDSTONE_SIDES = {
+    top = true,
+    bottom = true,
+    left = true,
+    right = true,
+    front = true,
+    back = true,
+}
+
+local function normalizeRedstoneSide(value, fallback)
+    local text = normalizeText(value, fallback, true)
+    if text == nil then return nil end
+    text = string.lower(text)
+    if not VALID_REDSTONE_SIDES[text] then
+        return fallback
+    end
+    return text
+end
+
+local function normalizeWebhookUrl(value, fallback)
+    local text = normalizeText(value, fallback, true)
+    if text == nil then return nil end
+    if not text:find("^https?://", 1) then
+        return fallback
+    end
+    return text
+end
+
 local function sanitizeRoleConfig(data, meta)
     if data.role ~= "controller" then
         if data.speaker_side ~= nil then note(meta, "Removed controller-only speaker setting") end
@@ -123,11 +164,15 @@ local function sanitizeRoleConfig(data, meta)
             note(meta, "Removed controller-only threshold settings")
         end
         if data.update_check_interval ~= nil then note(meta, "Removed controller-only update interval") end
+        if data.alert_redstone_side ~= nil then note(meta, "Removed controller-only alert redstone side") end
+        if data.alert_webhook_url ~= nil then note(meta, "Removed controller-only alert webhook URL") end
         data.speaker_side = nil
         data.auto_ctrl = nil
         data.threshold_low = nil
         data.threshold_high = nil
         data.update_check_interval = nil
+        data.alert_redstone_side = nil
+        data.alert_webhook_url = nil
     else
         if data.controller_id ~= nil then note(meta, "Removed controller self-link setting") end
         if data.controller_token ~= nil then note(meta, "Removed controller self token") end
@@ -137,6 +182,10 @@ local function sanitizeRoleConfig(data, meta)
     if data.role ~= "controller" and data.role ~= "display" then
         if data.monitor_side ~= nil then note(meta, "Removed monitor binding for non-monitor role") end
         data.monitor_side = nil
+    end
+    if not BIND_ROLES[data.role] then
+        if data.bound_peripheral ~= nil then note(meta, "Removed device peripheral binding for this role") end
+        data.bound_peripheral = nil
     end
 end
 
@@ -157,6 +206,7 @@ local function normalizeData(input)
     raw.controller_token = normalizeText(raw.controller_token, nil, true)
     raw.monitor_side = normalizeText(raw.monitor_side, nil, true)
     raw.speaker_side = normalizeText(raw.speaker_side, nil, true)
+    raw.bound_peripheral = normalizeText(raw.bound_peripheral, nil, true)
     raw.channel = normalizeInteger(raw.channel, DEFAULTS.channel)
     raw.controller_id = normalizeInteger(raw.controller_id, nil)
     raw.update_check_interval = normalizeInteger(raw.update_check_interval, nil)
@@ -164,6 +214,8 @@ local function normalizeData(input)
     raw.threshold_high = normalizeThreshold(raw.threshold_high, nil)
     raw.history_persistence_mode = normalizePersistenceMode(raw.history_persistence_mode, DEFAULTS.history_persistence_mode)
     raw.energy_unit = normalizeEnergyUnit(raw.energy_unit, DEFAULTS.energy_unit)
+    raw.alert_redstone_side = normalizeRedstoneSide(raw.alert_redstone_side, nil)
+    raw.alert_webhook_url = normalizeWebhookUrl(raw.alert_webhook_url, nil)
 
     if raw.auto_ctrl == nil then
         raw.auto_ctrl = DEFAULTS.auto_ctrl
@@ -229,6 +281,9 @@ end
 
 local function writeData()
     local f = fs.open(CONFIG_PATH, "w")
+    if not f then
+        error("Failed to open " .. CONFIG_PATH .. " for writing", 2)
+    end
     f.write(textutils.serialize(_data))
     f.close()
 end

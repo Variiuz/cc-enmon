@@ -25,14 +25,14 @@ local function findModem(cfg)
     return pmgr.findPreferred(cfg.get("modem_side"), MODEM_TYPE, "modem")
 end
 
-local function openNet(cfg)
+local function openNet(cfg, claim_code)
     local modem = findModem(cfg)
     if not modem then error("No ender modem found.") end
-    controller_link.openNodeNetwork(cfg, modem)
+    controller_link.openNodeNetwork(cfg, modem, claim_code)
 end
 
 function reactor.run(cfg)
-    local claim_code = controller_link.newClaimCode()
+    local claim_code = controller_link.isAdopted(cfg) and nil or controller_link.getOrCreateClaimCode()
     local runtime = node_runtime.create("Reactor Node", cfg, {
         extra_rows = function(local_cfg)
             return {
@@ -44,13 +44,17 @@ function reactor.run(cfg)
     local logLine = runtime.log
     local updatePanel = runtime.updatePanel
     logLine("[reactor] Starting reactor node: " .. cfg.get("node_id"), colors.lime)
+    if claim_code then
+        logLine("[reactor] Unlinked claim code (type this on the controller): " .. claim_code, colors.orange)
+    end
     updatePanel("Booting", "Opening network", colors.black)
 
-    openNet(cfg)
-    identity.announce(cfg, "reactor", controller_link.isAdopted(cfg) and "startup" or "unlinked", { claim_code = claim_code })
+    openNet(cfg, claim_code)
+    identity.announce(cfg, "reactor", controller_link.isAdopted(cfg) and "startup" or "unlinked")
 
     updatePanel("Waiting", "Reactor peripheral", colors.orange)
-    local port = reactor_peripheral.waitForReactor(logLine)
+    local bound = cfg.get("bound_peripheral")
+    local port = reactor_peripheral.waitForReactor(logLine, bound)
 
     logLine("[reactor] Broadcasting every " .. POLL_INTERVAL .. "s. Listening for commands.", colors.lime)
     updatePanel("Online", "Broadcasting every " .. POLL_INTERVAL .. "s", colors.lime)
@@ -84,7 +88,7 @@ function reactor.run(cfg)
                 if consecutive_errors >= MAX_ERRORS then
                     logLine("[reactor] Reconnecting...", colors.orange)
                     updatePanel("Waiting", "Reconnecting reactor", colors.orange)
-                    port = reactor_peripheral.waitForReactor(logLine)
+                    port = reactor_peripheral.waitForReactor(logLine, bound)
                     consecutive_errors = 0
                     updatePanel("Online", "Reconnected", colors.lime)
                 end
@@ -143,7 +147,7 @@ function reactor.run(cfg)
     local function hello_loop()
         while true do
             os.sleep(10)
-            identity.announce(cfg, "reactor", controller_link.isAdopted(cfg) and "heartbeat" or "unlinked", { claim_code = claim_code })
+            identity.announce(cfg, "reactor", controller_link.isAdopted(cfg) and "heartbeat" or "unlinked")
         end
     end
 

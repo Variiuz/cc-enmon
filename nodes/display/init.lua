@@ -18,7 +18,7 @@ local MODEM_TYPE = "ender_modem"
 local display = {}
 
 function display.run(cfg)
-    local claim_code = controller_link.newClaimCode()
+    local claim_code = controller_link.isAdopted(cfg) and nil or controller_link.getOrCreateClaimCode()
     local runtime = node_runtime.create("Display Node", cfg, {
         extra_rows = function(local_cfg)
             return {
@@ -30,16 +30,19 @@ function display.run(cfg)
     local updatePanel = runtime.updatePanel
     runtime.setHint("C Config")
     logLine("[display] Starting display node: " .. cfg.get("node_id"), colors.lime)
+    if claim_code then
+        logLine("[display] Unlinked claim code (type this on the controller): " .. claim_code, colors.orange)
+    end
     updatePanel("Booting", "Opening network", colors.black)
 
     local modem = pmgr.findPreferred(cfg.get("modem_side"), MODEM_TYPE, "modem")
     if not modem then error("No ender modem found.") end
-    controller_link.openNodeNetwork(cfg, modem)
+    controller_link.openNodeNetwork(cfg, modem, claim_code)
 
     local mon_side = cfg.get("monitor_side")
     hud.init(mon_side)
-    identity.announce(cfg, "display", controller_link.isAdopted(cfg) and "startup" or "unlinked", { claim_code = claim_code })
-    updatePanel(controller_link.isAdopted(cfg) and "Online" or "Unlinked", controller_link.isAdopted(cfg) and "Waiting for controller updates" or ("Claim " .. claim_code), controller_link.isAdopted(cfg) and colors.lime or colors.orange)
+    identity.announce(cfg, "display", controller_link.isAdopted(cfg) and "startup" or "unlinked")
+    updatePanel(controller_link.isAdopted(cfg) and "Online" or "Unlinked", controller_link.isAdopted(cfg) and "Waiting for controller updates" or ("Claim " .. tostring(claim_code)), controller_link.isAdopted(cfg) and colors.lime or colors.orange)
 
     local function net_loop()
         while true do
@@ -73,7 +76,7 @@ function display.run(cfg)
     local function hello_loop()
         while true do
             os.sleep(10)
-            identity.announce(cfg, "display", controller_link.isAdopted(cfg) and "heartbeat" or "unlinked", { claim_code = claim_code })
+            identity.announce(cfg, "display", controller_link.isAdopted(cfg) and "heartbeat" or "unlinked")
         end
     end
 

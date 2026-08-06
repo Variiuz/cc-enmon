@@ -29,12 +29,14 @@ function identity.announce(cfg, role, status, extra)
     for key, value in pairs(extra or {}) do
         payload[key] = value
     end
+    -- Claim codes are out-of-band only.
+    payload.claim_code = nil
 
     if controller_link.isAdopted(cfg) or cfgGet(cfg, "role") == "controller" then
         return controller_link.sendNodeMessage(cfg, net.MSG.NODE_HELLO, payload)
     end
 
-    return controller_link.sendDiscovery(cfg, role, payload.claim_code, payload)
+    return controller_link.sendDiscovery(cfg, role, nil, payload)
 end
 
 function identity.decorateTelemetry(cfg, role, payload)

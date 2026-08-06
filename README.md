@@ -2,13 +2,13 @@
 
 ENMON is a distributed energy monitoring and control stack for CC: Tweaked networks. It gives you one controller for your power room, shared telemetry across attached displays and pocket computers, and coordinated update rollouts for the machines that keep the system running.
 
-It currently supports Mekanism induction matrices for storage telemetry and Extreme Reactors / BigReactors for generation telemetry and basic reactor control.
+It currently supports Mekanism induction matrices, Extreme Reactors / BigReactors, Almost Reliable Energy Meter / IE current transformers, and Immersive Engineering diesel generators (Powah has no CC peripheral in the lab pack yet).
 
 ## Why ENMON
 
 - Keep matrix storage, IO, and fill trends visible from one controller instead of checking each machine manually
 - Mirror the same controller-authored data to wall displays and pocket computers
-- Start and stop reactors automatically using configurable matrix thresholds
+- Start and stop reactors/generators automatically using configurable matrix thresholds
 - Track history without requiring every node to sample and store its own graphs
 - Roll out updates across the network without manually reinstalling each computer
 
@@ -25,13 +25,16 @@ Recommended first setup:
 
 1. Install a controller first.
 2. Pick a shared wireless channel for the network.
-3. Add matrix, reactor, display, or pocket nodes on that same channel.
-4. Adopt new non-controller nodes from the controller using their claim codes.
-5. Verify that the controller monitor shows live node state before enabling auto control.
+3. Add matrix, reactor, meter, generator, display, or pocket nodes on that same channel.
+4. When multiple matching peripherals are attached, the installer asks which one to bind.
+5. Adopt new non-controller nodes from the controller using their claim codes (shown after reboot).
+6. Verify that the controller monitor shows live node state before enabling auto control.
 
 The bootstrap installer lets you choose a branch first, then downloads the full setup wizard from that branch. Installed nodes keep using their chosen branch for future updates.
 
-If `enmon.cfg` already exists, the installer can reuse it as a starting point and walk you back through the configuration pages.
+If `enmon.cfg` already exists, the installer can reuse it as a starting point and walk you back through the configuration pages. Changing role during install or later in the config editor force-resyncs managed files and prunes the old role package.
+
+If `enmon.lua` starts without a config, it offers to run `installer.lua` when present, or shows the wget command to fetch it.
 
 ## Hardware By Role
 
@@ -40,8 +43,10 @@ If `enmon.cfg` already exists, the installer can reuse it as a starting point an
 | **Controller** | Central authority for telemetry, history, alerts, and updates | Advanced Computer + Monitor (3x2 recommended) + Ender Modem + optional Speaker |
 | **Matrix Node** | Reads Mekanism induction matrix state and publishes storage telemetry | Computer + Ender Modem + wired `mekanism:induction_port` |
 | **Reactor Node** | Reads reactor state and accepts bounded control commands | Computer + Ender Modem + Extreme Reactors / BigReactors Computer Port |
+| **Meter Node** | Publishes FE transfer rate from Energy Meter / IE current transformer | Computer + Ender Modem + meter peripheral |
+| **Generator Node** | Publishes IE diesel/capacitor state and accepts enable/disable | Computer + Ender Modem + IE diesel generator (or capacitor readout) |
 | **Display Node** | Mirrors the controller-authored overview on another monitor | Computer + Monitor + Ender Modem |
-| **Pocket Computer** | Mobile readout with overview, history, and reactor detail tabs | Pocket Computer + Ender Modem |
+| **Pocket Computer** | Mobile readout + remote ON/OFF / rod control | Pocket Computer + Ender Modem |
 
 All nodes that belong to the same installation must share the same wireless channel.
 
@@ -50,27 +55,32 @@ All nodes that belong to the same installation must share the same wireless chan
 ENMON uses a controller-first network model.
 
 ```text
-Matrix Node ----\
-Reactor Node ---- Controller ---- Display Node
-Pocket Computer -/        \
-                           \--- Update coordination
+Matrix / Meter / Reactor / Generator ----\
+                                          Controller ---- Display Node
+Pocket Computer (read + control) ---------/        \
+                                                    \--- Alerts (speaker / redstone / webhook)
+                                                    \--- Update coordination
 ```
 
 - The controller collects telemetry, evaluates alerts, and stores the history series used by every view.
-- Matrix and reactor nodes stay focused on peripherals and transport.
+- Matrix, meter, reactor, and generator nodes stay focused on peripherals and transport.
 - Display and pocket nodes render controller-authored data instead of sampling their own local history.
-- New non-controller nodes start as `unlinked` and advertise a short claim code until the controller adopts them.
+- New non-controller nodes start as `unlinked` and show a short claim code on their own screen until the controller adopts them (type the code on the controller; it is not broadcast).
 - After adoption, operational traffic is authenticated with per-node tokens.
 
 ## What You Can Do With It
 
 - Monitor induction matrix stored energy, capacity, input, output, and fill percentage
+- See predicted time-to-empty / time-to-full from matrix IO rates
+- Aggregate multiple matrix nodes into one combined storage view
+- Show meter IO rates alongside matrix transfer
 - Watch shared history lines on the controller monitor, remote displays, and pocket tabs
-- See per-reactor output, temperature, rod level, and active state
-- Toggle reactors and adjust rod levels from the controller
-- Enable automatic reactor start/stop based on low and high matrix fill thresholds
-- Receive speaker alerts for low charge and missing nodes
+- See per-reactor / generator output and active state
+- Toggle reactors/generators and adjust reactor rod levels from the controller or pocket
+- Enable automatic reactor/generator start/stop based on low and high matrix fill thresholds
+- Receive speaker, redstone, and optional Discord webhook alerts for low charge and missing nodes
 - Check, offer, and coordinate node updates from the controller
+- Adopt nodes by typing the claim code shown on each node screen (codes are not broadcast)
 
 ## Controller Workflow
 
@@ -87,12 +97,14 @@ Typical flow:
 
 Key controller settings:
 
-- `auto_ctrl`: enables automatic reactor start and stop behavior
-- `threshold_low`: matrix fill percentage that starts reactors
-- `threshold_high`: matrix fill percentage that stops reactors
+- `auto_ctrl`: enables automatic reactor/generator start and stop behavior
+- `threshold_low`: matrix fill percentage that starts reactors/generators
+- `threshold_high`: matrix fill percentage that stops reactors/generators
 - `history_persistence_mode`: `memory_only`, `prompt_when_disk_detected`, or `disk_enabled`
 - `energy_unit`: `FE` or `RF` label for FE-equivalent values
 - `update_check_interval`: seconds between controller manifest checks
+- `alert_redstone_side`: optional computer side that goes high while alerts are active
+- `alert_webhook_url`: optional Discord-compatible webhook URL
 
 ## Operating Views And Hotkeys
 
@@ -181,20 +193,38 @@ Recent changes in this line include:
 
 ## Screenshots And Demo
 
-Planned documentation captures:
+Layout reference (capture in-game when convenient; the UI is live in the codebase):
 
-- The controller overview monitor
-- The updates view during a rollout
-- The pocket overview and history tabs
-- The setup wizard or adoption flow
+```text
+Controller overview (3x2 monitor)
++--------------------------------------------------+
+| ENMON Controller / Overview              12:34:56|
+| ! Low charge | matrix_1 offline                  |
+| [Matrix]              | [Reactors]               |
+| 12.4 MFE              | reactor_1 ON  2.1k FE/t  |
+| Fill 42% ETA empty 3m | Rod 40%  Fuel 88%        |
+| ███▄▄▄▄▄ Recent fill  | [OFF] [R-] [R+]          |
+| In +1.2k  Out -800    |                          |
++--------------------------------------------------+
 
-The UI is already present in the codebase; the repository does not include captured examples yet.
+Updates view (F4)
++--------------------------------------------------+
+| Check | Offer | Start | Abort | Adopt/Replace    |
+| Selected node claim codes are typed on terminal  |
++--------------------------------------------------+
+
+Pocket tabs: Overview | History | Reactor detail
+Setup: branch select -> role wizard -> soft peripheral check / pickers -> claim code on node screen after reboot
+```
+
+Recommended captures once available: controller overview, updates during rollout, pocket overview/history, setup/adoption flow.
 
 ## Development Notes
 
 - There is no large automated test suite yet
 - `tools/update-recovery-harness.lua` is available for updater and stale-file recovery checks
 - Runtime behavior is easiest to validate in-game with a controller plus at least one matrix or reactor node
+- For a ready-made Prism / NeoForge 1.21.1 test environment, use [`enmon-lab/`](enmon-lab/README.md) (import `enmon-lab/dist/ENMON-Lab-0.1.0.mrpack`)
 
 ## Contributing
 

@@ -200,6 +200,44 @@ function Update-ManifestHashes {
     }
 
     $Manifest | Add-Member -NotePropertyName hashes -NotePropertyValue $hashes -Force
+    $hashes['manifest.json'] = Get-ManifestIntegrityHash -Manifest $Manifest
+    $Manifest | Add-Member -NotePropertyName hashes -NotePropertyValue $hashes -Force
+}
+
+function Get-ManifestIntegrityHash {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Manifest
+    )
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add([string]$Manifest.version)
+    $revision = 0
+    if ($Manifest.PSObject.Properties.Name -contains 'manifest_revision') {
+        $revision = [int]$Manifest.manifest_revision
+    }
+    $parts.Add([string]$revision)
+    $policy = ''
+    if ($Manifest.PSObject.Properties.Name -contains 'rollout_policy') {
+        $policy = [string]$Manifest.rollout_policy
+    }
+    $parts.Add($policy)
+
+    $hashKeys = @($Manifest.hashes.PSObject.Properties.Name | Where-Object { $_ -ne 'manifest.json' } | Sort-Object)
+    foreach ($key in $hashKeys) {
+        $parts.Add(('{0}={1}' -f $key, [string]$Manifest.hashes.$key))
+    }
+
+    $fileGroups = @('common', 'controller', 'matrix', 'reactor', 'meter', 'generator', 'display', 'pocket')
+    foreach ($group in $fileGroups) {
+        if ($Manifest.files.PSObject.Properties.Name -contains $group) {
+            foreach ($path in @($Manifest.files.$group)) {
+                $parts.Add(('{0}:{1}' -f $group, [string]$path))
+            }
+        }
+    }
+
+    return Get-Sha256Hex -Bytes (Get-NormalizedUtf8Bytes -Text ($parts -join "`n"))
 }
 
 function Set-ManifestRevision {

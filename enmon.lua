@@ -2,7 +2,7 @@
 -- Entry point for ENMON - Energy Network Monitor.
 -- Run this file directly (or via startup.lua).
 -- Reads enmon.cfg written by installer.lua and dispatches to the role module.
--- If no config exists, print an error and exit (run installer.lua first).
+-- If no config exists, offer to launch the installer.
 
 -- Inject the script's directory into the package path so require() works
 -- regardless of where the file lives on the CC filesystem.
@@ -47,6 +47,65 @@ local function fatal(msg)
     error(msg, 0)
 end
 
+local function findInstallerPath()
+    local candidates = {
+        fs.combine(_dir, "installer.lua"),
+        "installer.lua",
+    }
+    for _, path in ipairs(candidates) do
+        if fs.exists(path) and not fs.isDir(path) then
+            return path
+        end
+    end
+    return nil
+end
+
+local function rescueMissingConfig()
+    local installerPath = findInstallerPath()
+    boot_ui.setSection("Configuration Missing")
+    boot_ui.setSummary({
+        { "Version", VERSION },
+        { "Branch", BRANCH },
+        { "Computer", tostring(os.getComputerID()) },
+        { "Status", "No configuration found", colors.red, colors.white },
+        { "Installer", installerPath and installerPath or "not found", installerPath and colors.lime or colors.orange, colors.black },
+    })
+    if installerPath then
+        boot_ui.setHint("I Run installer   Any other key Exit")
+    else
+        boot_ui.setHint("wget installer.lua then run it   Any key Exit")
+        boot_ui.log("wget https://raw.githubusercontent.com/Variiuz/cc-enmon/master/installer.lua installer.lua", colors.lightBlue)
+    end
+
+    while true do
+        local event, a = os.pullEvent()
+        if event == "key" then
+            if installerPath and a == keys.i then
+                boot_ui.setSection("Launching Installer")
+                boot_ui.setHint("")
+                local ok, err = shell.run(installerPath)
+                if ok == false then
+                    fatal("Installer failed: " .. tostring(err))
+                end
+                return
+            end
+            return
+        elseif event == "char" then
+            local ch = string.lower(tostring(a or ""))
+            if installerPath and ch == "i" then
+                boot_ui.setSection("Launching Installer")
+                boot_ui.setHint("")
+                local ok, err = shell.run(installerPath)
+                if ok == false then
+                    fatal("Installer failed: " .. tostring(err))
+                end
+                return
+            end
+            return
+        end
+    end
+end
+
 -- ── Bootstrap ──────────────────────────────────────────────────────────────────
 cls()
 boot_ui = runtime_panel.new("Launcher", { interactive_scroll = true })
@@ -73,14 +132,7 @@ end
 
 -- First run: no config found
 if not config.exists() then
-    boot_ui.setSection("Configuration Missing")
-    boot_ui.setSummary({
-        { "Version", VERSION },
-        { "Branch", BRANCH },
-        { "Computer", tostring(os.getComputerID()) },
-        { "Status", "No configuration found", colors.red, colors.white },
-    })
-    boot_ui.setHint("")
+    rescueMissingConfig()
     return
 end
 config.load()
@@ -95,6 +147,8 @@ local role_modules = {
     controller = "nodes/controller",
     matrix     = "nodes/matrix",
     reactor    = "nodes/reactor",
+    meter      = "nodes/meter",
+    generator  = "nodes/generator",
     display    = "nodes/display",
     pocket     = "nodes/pocket",
 }

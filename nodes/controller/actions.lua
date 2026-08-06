@@ -47,6 +47,19 @@ function actions.new(opts)
         api.setReactorControlRodLevel(node_id, current + (tonumber(delta) or 0))
     end
 
+    function api.setGeneratorActive(node_id, active)
+        local entry = state.updates.nodes[node_id]
+        if entry and entry.sender_id then
+            sendToEntry(entry, net.MSG.CMD_GENERATOR_SET, { active = active })
+        end
+        state.generators = state.generators or {}
+        if state.generators[node_id] then
+            state.generators[node_id].pending_active = active
+        end
+        logLine("[ctrl] manual CMD_GENERATOR_SET -> " .. tostring(active) ..
+            " (node: " .. tostring(node_id) .. ")", colors.lightBlue)
+    end
+
     function api.requestUpdateCheck()
         local active_cfg = getActiveConfig()
         if active_cfg then updates.performUpdateCheck(active_cfg, false) end

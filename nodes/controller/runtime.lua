@@ -69,7 +69,10 @@ function runtime.new(opts)
                     net.MSG.NODE_HELLO,
                     net.MSG.MATRIX_DATA,
                     net.MSG.REACTOR_DATA,
+                    net.MSG.METER_DATA,
+                    net.MSG.GENERATOR_DATA,
                     net.MSG.POCKET_REQUEST,
+                    net.MSG.POCKET_CMD,
                     net.MSG.UPDATE_ACK,
                     net.MSG.UPDATE_STATUS,
                 })
